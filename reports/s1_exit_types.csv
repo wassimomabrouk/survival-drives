@@ -1,0 +1,4 @@
+exit_type,spells,pct,median_poh_entry,median_poh_observed
+admin_censored,341905,87.38,11203,19483
+removed,39580,10.12,65995,6049
+failure,9790,2.5,27561,8082
