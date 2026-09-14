@@ -245,16 +245,26 @@ such.
 
 ## 7. Baselines (pre-committed)
 
-- **B0** Kaplan-Meier by model with delayed entry, no covariates, converted to a 30-day conditional risk given current age
-- **B1** Cox on age and capacity, stratified by model, no SMART attributes
-- **B2** Cox with the Cohort A universal SMART set, time-varying, counting-process format
-- **B3** Cox with the full Seagate set, Cohort B only
+Every model from B1 onward is fit and scored in the **landmark frame** defined in
+section 5: one row per spell per landmark, predicting P(failure within 30 days |
+alive at the landmark). The spell panel is retained only for B0 and the Fine-Gray
+sensitivity analysis, both of which are lifetime questions rather than
+horizon-specific ones.
+
+- **B0** Kaplan-Meier with delayed entry on the spell panel, no covariates, converted to a 30-day conditional risk given current age. Also refit on landmark rows as age alone, so it is directly comparable with the rest.
+- **B1** Nonparametric hazard by drive model and half-year age band, estimated as events over exposure with Gamma-Poisson shrinkage toward the model-level and global rates. No SMART attributes.
+- **B2** Cox on landmark rows with the Cohort A universal SMART set, stratified by drive model
+- **B3** As B2 plus the Seagate-only attributes, Cohort B only
 - **M1** Random Survival Forest
 - **M2** Gradient-boosted Cox
 - **M3** DeepHit, phase 2 only (section 11)
 
-B1 is the baseline that matters. Beating B0 is trivial; beating an age-and-model
-model is the real test of whether SMART telemetry carries information.
+B1 is the baseline that matters. Beating B0 is trivial; beating a model-and-age
+model is the real test of whether SMART telemetry carries information. B1 is
+therefore estimated nonparametrically rather than as a Cox model: with two
+predictors and millions of rows a Cox fit buys nothing over the direct estimate
+while imposing a proportional hazards assumption that B0 already suggests will
+fail. A weak B1 would let E2 pass trivially and prove nothing.
 
 ---
 
@@ -278,7 +288,7 @@ since a spell contributes many correlated landmark observations.
 Recorded now so that neither outcome can be rationalised afterwards.
 
 - **E1** B1 beats B0 modestly. Age and model carry real information.
-- **E2** B2 beats B1 substantially on IPCW Brier. If it does not, the project's premise fails and the README says so in the first paragraph.
+- **E2** B2 beats B1. Declared **before B2 exists**, the bar is: at least a 2% relative improvement in pooled IPCW Brier over B1, with a spell-level bootstrap interval on the difference excluding zero, **and** an improvement in IPCW AUC. Both metrics must move, so that neither can be cherry-picked afterwards. The 2% figure is calibrated to the scale the Brier score actually operates on here: with events at roughly 1 per 1000 landmark rows, most of the score comes from correct near-zero predictions, and a synthetic check where the true model structure was recovered exactly moved AUC from 0.543 to 0.719 while moving Brier only 0.25% relative. A few percent of relative Brier is a large effect in this setting, not a small one. If E2 fails, the project's premise fails and the README says so in the first paragraph.
 - **E3** On Cohort B, B3 improves on B2 but by a smaller margin than the literature on attributes 187 and 197 would suggest, in the range of 3 to 8% relative IPCW Brier. Most of any gain comes from 187 and 197; 188, 190, 241 and 242 contribute little.
 - **E4** M1 and M2 beat B2 on discrimination by a small margin and are worse calibrated before recalibration. This is the usual finding in risk prediction and is expected here.
 - **E5** The delayed-entry estimate and an estimate fit only on the incident cohort agree within confidence intervals, **compared like for like**, meaning restricted to the same drive models and the same installation vintage. Disagreement under that comparison would indicate the truncation handling is wrong. A pooled comparison across all vintages does not test truncation, because at any given age the full cohort and the incident cohort contain different manufacturing vintages by construction (see section 12, limitation 9).
@@ -377,3 +387,21 @@ specifies a model matched and vintage matched comparison, which is the
 comparison that actually tests truncation handling. Both the original pooled
 result and the corrected result are reported, and the residual pooling anomaly
 is recorded as unexplained.
+
+**2026-09-14, section 7 rewritten for a single modelling frame, section 9
+expectation E2 given a numeric threshold.** B0 had been fit; B1 had not, and no
+model touching covariates existed. Two changes.
+
+First, section 7 originally described B2 as counting-process Cox on the spell
+panel while section 5 defined a landmark prediction task. Those are different
+frames on different tables and do not compose. All models from B1 onward now live
+in the landmark frame, because that is the frame producing the calibrated
+horizon-specific probability the decision layer in section 10 consumes, and
+because comparing six models is only meaningful on identical rows with identical
+metrics. B1 also changes from a Cox model to a nonparametric estimate, which
+strengthens the baseline rather than weakening it.
+
+Second, E2 originally said B2 must beat B1 "substantially" without defining the
+word. That is not a pre-commitment, since any outcome could be argued into or out
+of it afterwards. E2 now carries a numeric threshold on two metrics, fixed before
+B2 was fit.
