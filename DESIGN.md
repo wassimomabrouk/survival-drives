@@ -281,7 +281,7 @@ Recorded now so that neither outcome can be rationalised afterwards.
 - **E2** B2 beats B1 substantially on IPCW Brier. If it does not, the project's premise fails and the README says so in the first paragraph.
 - **E3** On Cohort B, B3 improves on B2 but by a smaller margin than the literature on attributes 187 and 197 would suggest, in the range of 3 to 8% relative IPCW Brier. Most of any gain comes from 187 and 197; 188, 190, 241 and 242 contribute little.
 - **E4** M1 and M2 beat B2 on discrimination by a small margin and are worse calibrated before recalibration. This is the usual finding in risk prediction and is expected here.
-- **E5** The delayed-entry model and a model fit only on the 53,178-drive incident cohort agree within bootstrap confidence intervals. Disagreement would indicate the truncation handling is wrong.
+- **E5** The delayed-entry estimate and an estimate fit only on the incident cohort agree within confidence intervals, **compared like for like**, meaning restricted to the same drive models and the same installation vintage. Disagreement under that comparison would indicate the truncation handling is wrong. A pooled comparison across all vintages does not test truncation, because at any given age the full cohort and the incident cohort contain different manufacturing vintages by construction (see section 12, limitation 9).
 - **E6** Proportional hazards is rejected by Schoenfeld residuals for at least the age term. Stratification by model absorbs part of this; a time-varying coefficient or an accelerated failure time specification is the documented fallback.
 
 ---
@@ -330,6 +330,7 @@ elsewhere.
 6. Fold 1 trains on six quarters against fold 3's nine, so early-fold results rest on less data. Per-fold reporting makes this visible rather than hiding it in a pooled average.
 7. Results describe one operator's datacenters, workload and procurement decisions. They do not describe hard drives in general.
 8. 726 of 9,790 events (7.4%) fall into no landmark window and are invisible to every model. Composition, measured in `scripts/s1b_coverage_audit.py`: 378 failed before the first landmark, which is burn-in from the 30 day change feature and costs training data only; 143 had a spell of roughly one day, giving a landmark model no history to predict from; 198 were excluded by the staleness rule because their most recent telemetry predated the landmark by more than 14 days; 7 entered after the last landmark. These exclusions are common to every model, so the comparison between models is unaffected, but reported performance is conditional on a drive being scorable at all. In particular **the model does not address infant mortality**: drives failing within days of installation are structurally outside a landmark framework, and no claim is made about them. The uncovered share rises from 0.7% in 2025 Q1 to 12.3% in 2026 Q1 as the fleet grows and newly installed drives make up more of the population, which reduces fold 3's effective event count from 998 to 875.
+9. E5 as originally specified compared pooled full-cohort survival against the incident cohort at fixed ages, and failed at age 2: 0.9831 against a band of [0.9842, 0.9865], a gap of 0.23 percentage points. That specification was not like for like. At age 2 the full cohort is 37% 2022 install vintage, 48% 2023 and 15% 2024, while the incident cohort is almost entirely 2024, since nothing installed later can reach age 2 within a 27 month window. Holding drive model fixed changed the gap by 0.000 pp, ruling out model composition. Holding installation vintage fixed resolves it: the 2024 vintage under delayed entry gives 0.98583 against the incident arm's 0.98622, a difference of 0.04 pp. Survival at age 2 across the 2022, 2023 and 2024 vintages spans 0.240 pp, which by itself exceeds the original gap. Delayed entry is therefore validated on the comparison that tests it. One residual anomaly is left unexplained rather than rationalised: pooled full-cohort survival at age 2 (0.98393) falls below all three individual vintage estimates, where a risk-set-weighted pooling should place it inside their range. The likely mechanism is that 2025 and 2026 installations contribute hazard at young ages without ever reaching age 2, but this was not verified. All quantities here are under a quarter of a percentage point, against a project whose predictions are 30 day risks at landmarks.
 
 ---
 
@@ -365,3 +366,14 @@ claim in conversation that 463 events were uncovered was arithmetically wrong: i
 subtracted a sum over landmark rows from a count of spells, which double counts
 failures seen by overlapping windows. `scripts/s1b_coverage_audit.py` measures it
 correctly with a distinct count and attributes every uncovered event to a cause.
+
+**2026-09-14, section 9 expectation E5 restated, section 12 limitation 9 added.**
+No model had been fit beyond B0, which is nonparametric and unaffected. E5
+originally called for a pooled comparison between the delayed entry estimate and
+the incident cohort. That comparison is confounded by installation vintage: at
+any fixed age the two arms necessarily contain different vintages, because
+drives installed late in the window cannot have reached older ages. E5 now
+specifies a model matched and vintage matched comparison, which is the
+comparison that actually tests truncation handling. Both the original pooled
+result and the corrected result are reported, and the residual pooling anomaly
+is recorded as unexplained.
