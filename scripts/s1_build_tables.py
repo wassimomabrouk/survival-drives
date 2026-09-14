@@ -59,6 +59,15 @@ HORIZON_DAYS = 30
 STALENESS_DAYS = 14
 DELTA_WINDOW_DAYS = 30
 
+# Landmarks are spaced 28 days apart rather than monthly. Calendar months run 28
+# to 31 days, so a monthly grid against a 30 day horizon leaves uncovered days in
+# every 31 day month, and 4.7% of failures fell into no landmark window at all.
+# A fixed 28 day step covers the timeline completely with a two day overlap
+# between consecutive windows. The overlap is harmless: landmark observations
+# within a spell are already correlated, and the bootstrap resamples at spell
+# level rather than row level.
+LANDMARK_STEP_DAYS = 28
+
 MANUFACTURER_CASE = """
     CASE
         WHEN model ILIKE 'ST%' OR model ILIKE 'Seagate%' THEN 'Seagate'
@@ -194,19 +203,33 @@ def build_landmarks(con, start: str) -> None:
 
     # First landmark leaves room for the 30 day change features; last landmark
     # leaves room for the 30 day outcome window.
+    # The grid is anchored to its END, not its start. Stepping forward from the
+    # first landmark leaves a remainder at the far end of the window, which is
+    # precisely where the rolling origin test folds sit: forward anchoring put the
+    # last landmark at 2026-02-25 and left 14.9% of 2026 Q1 events visible to no
+    # landmark. Anchoring backwards from (max_date - horizon) puts the last
+    # landmark as late as the horizon allows and moves the remainder into the
+    # 2024 burn in, where it costs training data only.
     con.execute(
         f"""
         CREATE OR REPLACE TABLE landmark_dates AS
+        WITH bounds AS (
+            SELECT
+                DATE '{start}' + {DELTA_WINDOW_DAYS} AS lo,
+                DATE '{max_date}' - {HORIZON_DAYS}   AS hi
+        )
         SELECT UNNEST(generate_series(
-            DATE '{start}' + {DELTA_WINDOW_DAYS},
-            DATE '{max_date}' - {HORIZON_DAYS},
-            INTERVAL 1 MONTH
+            hi - CAST(DATE_DIFF('day', lo, hi) / {LANDMARK_STEP_DAYS} AS INTEGER)
+                 * INTERVAL {LANDMARK_STEP_DAYS} DAY,
+            hi,
+            INTERVAL {LANDMARK_STEP_DAYS} DAY
         ))::DATE AS landmark
+        FROM bounds
         """
     )
     n_lm = con.execute("SELECT COUNT(*) FROM landmark_dates").fetchone()[0]
     lo, hi = con.execute("SELECT MIN(landmark), MAX(landmark) FROM landmark_dates").fetchone()
-    print(f"{n_lm} monthly landmarks, {lo} to {hi}")
+    print(f"{n_lm} landmarks at {LANDMARK_STEP_DAYS} day spacing, {lo} to {hi}")
 
     cur = ", ".join(f"cur.smart_{n}_raw AS smart_{n}" for n in SMART_RAW_COLS)
     # current values are already projected as smart_<n> by with_current, so the
@@ -366,6 +389,26 @@ def reconcile(con, reports: Path) -> None:
         reports,
         "Event rate per landmark should be broadly stable. The three rolling "
         "origin test quarters are the last three rows.",
+    )
+
+    emit(
+        con,
+        f"""
+        SELECT
+            (SELECT COUNT(*) FROM spells WHERE event = 1)                  AS events_total,
+            (SELECT COUNT(DISTINCT spell_key) FROM landmarks
+             WHERE fail_{HORIZON_DAYS}d = 1)                               AS events_covered,
+            (SELECT COUNT(*) FROM spells WHERE event = 1)
+              - (SELECT COUNT(DISTINCT spell_key) FROM landmarks
+                 WHERE fail_{HORIZON_DAYS}d = 1)                           AS events_uncovered
+        """,
+        "s1_event_coverage",
+        reports,
+        "An event is covered if at least one landmark sees it inside the horizon. "
+        "With a 28 day landmark step and a 30 day horizon the grid covers the "
+        "timeline completely, so events_uncovered should be zero or near it. Any "
+        "remainder is a spell whose entire life sat between the first landmark and "
+        "its own entry date.",
     )
 
     emit(

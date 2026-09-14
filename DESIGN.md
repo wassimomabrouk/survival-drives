@@ -188,9 +188,24 @@ history up to and including L, estimate
 
     P(failure in (L, L + 30 days] | alive at L)
 
-Landmarks are placed monthly. A spell contributes an observation at every
+Landmarks are placed every 28 days. A spell contributes an observation at every
 landmark it survives to, which is how the model would be used in practice: every
 drive, every day, re-scored on its history to date.
+
+The spacing is 28 days rather than monthly because calendar months run 28 to 31
+days, so a monthly grid against a 30 day horizon leaves uncovered days in every
+31 day month. Under the original monthly grid 463 of 9,790 events (4.7%) fell
+into no landmark window at all and were silently invisible to every model. A
+fixed 28 day step covers the timeline completely, at the cost of a two day
+overlap between consecutive windows. The overlap is harmless: landmark
+observations within a spell are already correlated, and the bootstrap resamples
+at spell level rather than row level.
+
+The grid is anchored to its **end**, at (last observed date minus horizon), not
+to its start. Stepping forward from the first landmark leaves a remainder at the
+far end of the window, which is exactly where the rolling origin test folds sit.
+Anchoring backwards moves that remainder into the 2024 burn in, where it costs
+training data only.
 
 **Staleness rule.** A spell is scorable at landmark L only if its most recent
 SMART observation falls within 14 days of L, which is two sampling periods. A
@@ -308,9 +323,45 @@ elsewhere.
 ## 12. Stated limitations
 
 1. Weekly sampling means power-on hours at spell entry are known to within roughly 168 hours. Immaterial against lifetimes in the tens of thousands of hours, but stated.
-2. Backblaze does not publish why a drive left the fleet, so the separation of failure from non-failure removal cannot be verified. If operators preferentially pull drives that look unhealthy, the removals are informative and every estimate carries bias in a direction that cannot be quantified from this data.
+2. Backblaze does not publish why a drive left the fleet, so failure and non-failure removal cannot be separated from the source data. This was tested rather than assumed (`scripts/s2_censoring_check.py`). Removed drives carry roughly twice the prevalence of non-zero reallocated, pending and offline uncorrectable sectors as surviving drives, but matched on drive model and age that excess falls to 0.6, 0.3 and 0.3 percentage points respectively. Removals are also heavily concentrated by model, with a single model accounting for 50 to 99 percent of removals in most quarters. Both findings indicate wholesale retirement of ageing models rather than selection on individual drive health, which makes censoring conditionally independent given the model stratum and the power-on-hours time scale that the primary analysis already conditions on. A residual tail of under one percent of removals, concentrated in the HGST 12 TB models, does show genuine health selection and is reported separately. Fine-Gray therefore remains a sensitivity analysis, as pre-committed, rather than becoming the primary specification.
 3. Failure is Backblaze's operational definition, not a physical one.
 4. Raw SMART values are not comparable across manufacturers. Models are stratified accordingly, and no cross-vendor comparison of raw magnitudes is made.
 5. The window opens on 2024-01-01, so 84.9% of the cohort is left-truncated and the fleet's earlier history is unobserved.
 6. Fold 1 trains on six quarters against fold 3's nine, so early-fold results rest on less data. Per-fold reporting makes this visible rather than hiding it in a pooled average.
 7. Results describe one operator's datacenters, workload and procurement decisions. They do not describe hard drives in general.
+8. 726 of 9,790 events (7.4%) fall into no landmark window and are invisible to every model. Composition, measured in `scripts/s1b_coverage_audit.py`: 378 failed before the first landmark, which is burn-in from the 30 day change feature and costs training data only; 143 had a spell of roughly one day, giving a landmark model no history to predict from; 198 were excluded by the staleness rule because their most recent telemetry predated the landmark by more than 14 days; 7 entered after the last landmark. These exclusions are common to every model, so the comparison between models is unaffected, but reported performance is conditional on a drive being scorable at all. In particular **the model does not address infant mortality**: drives failing within days of installation are structurally outside a landmark framework, and no claim is made about them. The uncovered share rises from 0.7% in 2025 Q1 to 12.3% in 2026 Q1 as the fleet grows and newly installed drives make up more of the population, which reduces fold 3's effective event count from 998 to 875.
+
+---
+
+## 13. Amendment log
+
+Pre-commitment is only meaningful if changes are recorded rather than made
+silently. Every amendment to this document after its first commit is listed here
+with its date, its reason, and whether any model had been fit at the time.
+
+**2026-09-14, section 5, landmark spacing changed from monthly to every 28
+days.** No model had been fit, so section 5 was still open under the terms in the
+header. Reason: the monthly grid left 463 of 9,790 events (4.7%) inside no
+landmark window, because calendar months run up to 31 days while the horizon is
+30. This is a mechanical coverage defect, not a modelling choice, and the fix
+does not alter any baseline, metric, expectation or protocol.
+
+**2026-09-14, section 12, limitation 2 rewritten.** No model had been fit. The
+original text asserted that informative censoring could not be assessed from the
+data. It can be, and was: conditional on model and age, health does not predict
+removal. The limitation now reports the test and its result instead of stating an
+untested worry.
+
+**2026-09-14, section 5, landmark grid anchored to its end rather than its
+start.** No model had been fit. Reason: forward anchoring left the last landmark
+at 2026-02-25, so failures after 2026-03-27 were visible to no landmark, and
+14.9% of 2026 Q1 events were uncovered inside a test fold. End anchoring
+eliminated that category entirely. The residual 12.3% in 2026 Q1 is a different
+cause, fleet growth and infant mortality, and is documented as limitation 8
+rather than engineered away.
+
+**2026-09-14, section 12, limitation 8 added.** No model had been fit. An earlier
+claim in conversation that 463 events were uncovered was arithmetically wrong: it
+subtracted a sum over landmark rows from a count of spells, which double counts
+failures seen by overlapping windows. `scripts/s1b_coverage_audit.py` measures it
+correctly with a distinct count and attributes every uncovered event to a cause.

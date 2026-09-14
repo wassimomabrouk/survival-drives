@@ -1,0 +1,5 @@
+reason,events,median_spell_days
+1. failed before the first landmark,378,11
+3. entered after the last landmark,7,3
+4. whole spell fell between two landmarks,143,1
+5. excluded by the staleness rule,198,683
