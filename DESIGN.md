@@ -294,7 +294,12 @@ Recorded now so that neither outcome can be rationalised afterwards.
   - **Constraint**: calibration does not degrade, judged by the decile ratio table.
 
   No fixed percentage is set because a percentage cannot be calibrated in advance at this event rate. B1's measured result makes the point: drive model raises AUC by 6.7 points with non-overlapping intervals, which is a substantial gain, while moving Brier 0.06% relative. With events near 1 per 1000 landmark rows, the Brier score is dominated by correct near-zero predictions and compresses large effects into tiny numbers. A threshold that a genuinely predictive model could fail on scale alone would not distinguish the hypothesis from its negation. Direction plus a paired interval excluding zero does. If E2 fails, the project's premise fails and the README says so in the first paragraph.
-- **E3** On Cohort B, B3 improves on B2 but by a smaller margin than the literature on attributes 187 and 197 would suggest, in the range of 3 to 8% relative IPCW Brier. Most of any gain comes from 187 and 197; 188, 190, 241 and 242 contribute little.
+- **E3** On Cohort B, B3 improves on B2. Declared **before B3 exists**, judged the same way as E2 and for the same reasons:
+  - **Primary**: IPCW AUC improves, paired bootstrap interval on the difference excluding zero.
+  - **Secondary**: IPCW Brier, reported both raw and at oracle level, with no threshold.
+  - **Directional**: among the five attributes actually under test, 187 (reported uncorrectable errors) carries most of any gain, while 188, 190, 241 and 242 contribute little. This is checked by refitting with 187 alone added and comparing against the full set.
+
+  Both arms are fitted on the same Seagate cohort, so the comparison isolates the attributes rather than the population. Note that attribute 197 is in the universal set and already present in B2, so it cannot contribute anything incremental: the attributes under test are 187, 188, 190, 241 and 242 only. An earlier version of E3 named 197 among the incremental attributes and set a 3 to 8% relative Brier threshold; both were errors, corrected before B3 was fitted (amendment log).
 - **E4** M1 and M2 beat B2 on discrimination by a small margin and are worse calibrated. This is the usual finding in risk prediction and is expected here. No recalibration step is applied to any model (section 10), so calibration is reported as the models produce it.
 - **E5** The delayed-entry estimate and an estimate fit only on the incident cohort agree within confidence intervals, **compared like for like**, meaning restricted to the same drive models and the same installation vintage. Disagreement under that comparison would indicate the truncation handling is wrong. A pooled comparison across all vintages does not test truncation, because at any given age the full cohort and the incident cohort contain different manufacturing vintages by construction (see section 12, limitation 9).
 - **E6** Proportional hazards is rejected by Schoenfeld residuals for at least the age term. Stratification by model absorbs part of this; a time-varying coefficient or an accelerated failure time specification is the documented fallback.
@@ -467,3 +472,19 @@ noise it is estimated from, so it cannot be fitted honestly on one quarter.
 Level uncertainty is now handled where it belongs, as a swept parameter in the
 decision layer alongside the cost ratio, rather than as a correction pretending
 to knowledge nobody has.
+
+**2026-09-15, expectation E3 restated before B3 was fitted.** B2 had been fitted;
+B3 had not. Two errors in the original wording.
+
+It set a 3 to 8% relative IPCW Brier threshold, repeating the scale mistake that
+E2 was already amended for earlier the same day. Measured relative Brier gains on
+this data are 0.06% for B1 over B0 and not distinguishable from zero for B2 over
+B1, so a 3 to 8% bar could not have been met whatever the vendor attributes do.
+
+It also named attribute 197 among the attributes whose incremental value was
+being tested. 197 is in the universal feature set and is already in B2, so its
+contribution is not incremental by construction. The attributes actually under
+test are 187, 188, 190, 241 and 242.
+
+The directional part of E3, that 187 dominates and the rest contribute little,
+was scale free and testable and is retained unchanged.
