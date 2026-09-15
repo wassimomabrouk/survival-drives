@@ -288,14 +288,14 @@ since a spell contributes many correlated landmark observations.
 Recorded now so that neither outcome can be rationalised afterwards.
 
 - **E1** B1 beats B0 modestly. Age and model carry real information.
-- **E2** B2 beats B1. Declared **before B2 exists**, on recalibrated predictions, with every quantity from a spell-level bootstrap of the *paired* difference between the two models scored on identical rows:
+- **E2** B2 beats B1. Declared **before B2 exists**, on raw predictions, with every quantity from a spell-level bootstrap of the *paired* difference between the two models scored on identical rows:
   - **Primary**: IPCW AUC improves, interval on the paired difference excluding zero.
   - **Secondary**: IPCW Brier improves, interval on the paired difference excluding zero. No fixed percentage.
   - **Constraint**: calibration does not degrade, judged by the decile ratio table.
 
   No fixed percentage is set because a percentage cannot be calibrated in advance at this event rate. B1's measured result makes the point: drive model raises AUC by 6.7 points with non-overlapping intervals, which is a substantial gain, while moving Brier 0.06% relative. With events near 1 per 1000 landmark rows, the Brier score is dominated by correct near-zero predictions and compresses large effects into tiny numbers. A threshold that a genuinely predictive model could fail on scale alone would not distinguish the hypothesis from its negation. Direction plus a paired interval excluding zero does. If E2 fails, the project's premise fails and the README says so in the first paragraph.
 - **E3** On Cohort B, B3 improves on B2 but by a smaller margin than the literature on attributes 187 and 197 would suggest, in the range of 3 to 8% relative IPCW Brier. Most of any gain comes from 187 and 197; 188, 190, 241 and 242 contribute little.
-- **E4** M1 and M2 beat B2 on discrimination by a small margin and are worse calibrated before recalibration. This is the usual finding in risk prediction and is expected here.
+- **E4** M1 and M2 beat B2 on discrimination by a small margin and are worse calibrated. This is the usual finding in risk prediction and is expected here. No recalibration step is applied to any model (section 10), so calibration is reported as the models produce it.
 - **E5** The delayed-entry estimate and an estimate fit only on the incident cohort agree within confidence intervals, **compared like for like**, meaning restricted to the same drive models and the same installation vintage. Disagreement under that comparison would indicate the truncation handling is wrong. A pooled comparison across all vintages does not test truncation, because at any given age the full cohort and the incident cohort contain different manufacturing vintages by construction (see section 12, limitation 9).
 - **E6** Proportional hazards is rejected by Schoenfeld residuals for at least the age term. Stratification by model absorbs part of this; a time-varying coefficient or an accelerated failure time specification is the documented fallback.
 
@@ -307,17 +307,24 @@ The true cost of an unplanned failure relative to a planned replacement is not
 public, so it is not invented. It is parameterised as a ratio k and swept across
 a plausible range.
 
-**Recalibration is a required step before any prediction reaches this layer.**
-The fleet's failure rate declined across the observation window, so a model
-trained on older data carries a higher hazard level forward and over-predicts.
-B1 over-predicts by roughly 20% pooled, and by 33% and 56% in folds 3 and 2
-respectively. Raw predictions fed to a cost calculation would push the
-replacement threshold toward over-replacing. Every model therefore has a
-multiplicative hazard correction fitted on a held out validation quarter that
-the model has not seen, and applied to the test quarter. The correction moves the
-overall level only, leaving ranking and therefore discrimination untouched by
-construction, so it improves calibration without manufacturing apparent
-predictive performance. The fitted factors are reported per fold.
+**Two quantities are swept, not estimated.** The cost ratio k is unknown because
+it is not public. The fleet's overall hazard level is unknown for a different
+reason: it is genuinely volatile. Measured landmark event rates per 1000 rows run
+1.077, 1.542, 1.554, 1.204, 1.186, 1.037, 1.287, 0.807, 0.901 across the nine
+quarters, a coefficient of variation near 21% with no trend. Models trained on
+past quarters therefore carry a level that is right on average and wrong in any
+particular quarter, by roughly 20% in either direction.
+
+A recalibration step fitted on the preceding quarter was tried and **removed**,
+because the quantity being corrected is the same size as the quarter-to-quarter
+noise the correction is estimated from. It made calibration worse rather than
+better (amendment log, 2026-09-15).
+
+The honest treatment is the same as for k: report how the optimal replacement
+threshold moves when the realised failure rate comes in 20% above or below what
+the model expected. An operator does not know next quarter's failure rate either,
+so a threshold that holds across that range is worth more than one tuned to a
+level nobody can predict.
 
 For each k and each replacement threshold p, expected cost per drive-year is
 computed on held-out data. The deliverable is a family of curves showing where
@@ -441,3 +448,22 @@ Section 10 now requires recalibration because B1 over-predicts by about 20%
 pooled, driven by a declining fleet failure rate across the window rather than by
 any modelling error. This is exactly the failure mode temporal validation exists
 to expose, and a random split would have hidden it entirely.
+
+**2026-09-15, section 10 recalibration step removed, one day after it was added.**
+B1 had been fit; B2 had not. The step was added on the reasoning that the fleet's
+failure rate had declined across the window, so models trained on older data
+would over-predict. That reasoning was wrong. The quarterly landmark event rates
+oscillate without a trend, and the inference of a decline came from looking at
+three folds rather than the full series.
+
+Fitting the factor on the quarter preceding each test quarter therefore corrects
+using a level that does not predict the next one. In fold 1 the validation
+quarter ran at 1.037 events per 1000 and the test quarter at 1.287, so the fitted
+factor of 0.803 pushed predictions down when they needed to rise. Measured
+effect: decile calibration ratios moved from a range of 0.74 to 1.05 without the
+correction to 0.80 to 1.51 with it. The correction is the same magnitude as the
+noise it is estimated from, so it cannot be fitted honestly on one quarter.
+
+Level uncertainty is now handled where it belongs, as a swept parameter in the
+decision layer alongside the cost ratio, rather than as a correction pretending
+to knowledge nobody has.
