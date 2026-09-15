@@ -288,7 +288,12 @@ since a spell contributes many correlated landmark observations.
 Recorded now so that neither outcome can be rationalised afterwards.
 
 - **E1** B1 beats B0 modestly. Age and model carry real information.
-- **E2** B2 beats B1. Declared **before B2 exists**, the bar is: at least a 2% relative improvement in pooled IPCW Brier over B1, with a spell-level bootstrap interval on the difference excluding zero, **and** an improvement in IPCW AUC. Both metrics must move, so that neither can be cherry-picked afterwards. The 2% figure is calibrated to the scale the Brier score actually operates on here: with events at roughly 1 per 1000 landmark rows, most of the score comes from correct near-zero predictions, and a synthetic check where the true model structure was recovered exactly moved AUC from 0.543 to 0.719 while moving Brier only 0.25% relative. A few percent of relative Brier is a large effect in this setting, not a small one. If E2 fails, the project's premise fails and the README says so in the first paragraph.
+- **E2** B2 beats B1. Declared **before B2 exists**, on recalibrated predictions, with every quantity from a spell-level bootstrap of the *paired* difference between the two models scored on identical rows:
+  - **Primary**: IPCW AUC improves, interval on the paired difference excluding zero.
+  - **Secondary**: IPCW Brier improves, interval on the paired difference excluding zero. No fixed percentage.
+  - **Constraint**: calibration does not degrade, judged by the decile ratio table.
+
+  No fixed percentage is set because a percentage cannot be calibrated in advance at this event rate. B1's measured result makes the point: drive model raises AUC by 6.7 points with non-overlapping intervals, which is a substantial gain, while moving Brier 0.06% relative. With events near 1 per 1000 landmark rows, the Brier score is dominated by correct near-zero predictions and compresses large effects into tiny numbers. A threshold that a genuinely predictive model could fail on scale alone would not distinguish the hypothesis from its negation. Direction plus a paired interval excluding zero does. If E2 fails, the project's premise fails and the README says so in the first paragraph.
 - **E3** On Cohort B, B3 improves on B2 but by a smaller margin than the literature on attributes 187 and 197 would suggest, in the range of 3 to 8% relative IPCW Brier. Most of any gain comes from 187 and 197; 188, 190, 241 and 242 contribute little.
 - **E4** M1 and M2 beat B2 on discrimination by a small margin and are worse calibrated before recalibration. This is the usual finding in risk prediction and is expected here.
 - **E5** The delayed-entry estimate and an estimate fit only on the incident cohort agree within confidence intervals, **compared like for like**, meaning restricted to the same drive models and the same installation vintage. Disagreement under that comparison would indicate the truncation handling is wrong. A pooled comparison across all vintages does not test truncation, because at any given age the full cohort and the incident cohort contain different manufacturing vintages by construction (see section 12, limitation 9).
@@ -301,6 +306,18 @@ Recorded now so that neither outcome can be rationalised afterwards.
 The true cost of an unplanned failure relative to a planned replacement is not
 public, so it is not invented. It is parameterised as a ratio k and swept across
 a plausible range.
+
+**Recalibration is a required step before any prediction reaches this layer.**
+The fleet's failure rate declined across the observation window, so a model
+trained on older data carries a higher hazard level forward and over-predicts.
+B1 over-predicts by roughly 20% pooled, and by 33% and 56% in folds 3 and 2
+respectively. Raw predictions fed to a cost calculation would push the
+replacement threshold toward over-replacing. Every model therefore has a
+multiplicative hazard correction fitted on a held out validation quarter that
+the model has not seen, and applied to the test quarter. The correction moves the
+overall level only, leaving ranking and therefore discrimination untouched by
+construction, so it improves calibration without manufacturing apparent
+predictive performance. The fitted factors are reported per fold.
 
 For each k and each replacement threshold p, expected cost per drive-year is
 computed on held-out data. The deliverable is a family of curves showing where
@@ -405,3 +422,22 @@ Second, E2 originally said B2 must beat B1 "substantially" without defining the
 word. That is not a pre-commitment, since any outcome could be argued into or out
 of it afterwards. E2 now carries a numeric threshold on two metrics, fixed before
 B2 was fit.
+
+**2026-09-14, expectation E2 restated again, section 10 gains a required
+recalibration step.** B1 had been fit; B2 had not. Two changes, both prompted by
+B1's measured behaviour.
+
+E2's 2% relative Brier threshold, set earlier the same day, was calibrated from a
+synthetic check and was wrong by more than an order of magnitude. On real data B1
+improves AUC over B0 by 6.7 points with non-overlapping intervals while improving
+Brier by 0.06%. A 2% bar could therefore have failed a strongly predictive model
+for reasons unrelated to the hypothesis. E2 now uses direction plus a paired
+bootstrap interval excluding zero on both metrics, which is scale free. The
+comparison also moves from marginal intervals to the paired difference, which is
+the correct and considerably more powerful test when two models are scored on
+identical rows.
+
+Section 10 now requires recalibration because B1 over-predicts by about 20%
+pooled, driven by a declining fleet failure rate across the window rather than by
+any modelling error. This is exactly the failure mode temporal validation exists
+to expose, and a random split would have hidden it entirely.
