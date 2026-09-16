@@ -79,7 +79,22 @@ question (section 1).
 
 ---
 
-## 1. Research questions
+## 1. Estimand and research questions
+
+**Estimand**, stated precisely because the project is easy to over-claim:
+
+> The conditional probability that a drive **already in Backblaze's observed
+> fleet** experiences a Backblaze-recorded failure within the next 30 days, given
+> its accumulated power-on hours, drive model, and SMART telemetry up to the
+> prediction time; and the use of those probabilities to evaluate cost-based
+> replacement policies on temporally held-out quarters.
+
+Three things that is not. It is not hard drive lifespan from manufacture: the
+data begins when a drive enters Backblaze's fleet, and earlier history is
+unobserved. It is not a physical definition of failure: failure is Backblaze's
+operational determination. And it is not a statement about drives in general: it
+describes one operator's datacenters, workload and procurement.
+
 
 **RQ1, dynamic risk.** Given a drive's SMART history up to today, what is its
 probability of failing within the next 30 days, and is that probability
@@ -138,16 +153,30 @@ condition 1. What gaps do affect is scoring, which is handled at landmark time
 **Event.** A spell is an event if it carries the failure flag on its final
 observed day.
 
-**Censoring and competing risks.** A spell ending on the last day of the window is
-right-censored. A spell ending earlier without a failure flag is a removal of
-unknown cause, because Backblaze does not publish why a drive left the fleet.
-This is treated two ways, both reported:
+**Censoring, and why there is no competing risks model.** A spell ending on the
+last day of the window is right-censored. A spell ending earlier without a
+failure flag has left observable follow-up for a reason the public data does not
+record.
 
-- Primary: independent censoring
-- Sensitivity: Fine-Gray subdistribution hazard with removal as a competing event
+The event structure is therefore:
 
-If the two disagree materially, the ambiguity is stated in the README as an
-irreducible limitation of the source, not resolved by assertion.
+- **Event**: a Backblaze-recorded drive failure
+- **Censoring**: the drive leaves observable follow-up without a recorded failure
+
+and **not** failure against a known non-failure removal. Fine-Gray was in an
+earlier version of this document as a sensitivity analysis and has been
+**removed**, because a subdistribution hazard model requires an observed
+cause-of-exit label and no such label exists in this dataset. Our "removed"
+category is inferred from the timing of disappearance, not observed. Fitting
+Fine-Gray to an inferred label would imply information the data does not contain.
+
+What can be done instead, and was: test whether the censoring is informative.
+`scripts/s2_censoring_check.py` shows that conditional on drive model and age,
+health does not predict removal, and that removals are concentrated by model in a
+pattern indicating wholesale retirement rather than selection on individual
+drives. That conditioning set is exactly the one the models already adjust for,
+so censoring is conditionally independent given the covariates in use. The
+residual ambiguity is stated as limitation 2 rather than modelled away.
 
 **Exclusions**, each with its count reported:
 
@@ -247,9 +276,8 @@ such.
 
 Every model from B1 onward is fit and scored in the **landmark frame** defined in
 section 5: one row per spell per landmark, predicting P(failure within 30 days |
-alive at the landmark). The spell panel is retained only for B0 and the Fine-Gray
-sensitivity analysis, both of which are lifetime questions rather than
-horizon-specific ones.
+alive at the landmark). The spell panel is retained only for B0, which asks a
+lifetime question rather than a horizon-specific one.
 
 - **B0** Kaplan-Meier with delayed entry on the spell panel, no covariates, converted to a 30-day conditional risk given current age. Also refit on landmark rows as age alone, so it is directly comparable with the rest.
 - **B1** Nonparametric hazard by drive model and half-year age band, estimated as events over exposure with Gamma-Poisson shrinkage toward the model-level and global rates. No SMART attributes.
@@ -301,7 +329,7 @@ Recorded now so that neither outcome can be rationalised afterwards.
 
   Both arms are fitted on the same Seagate cohort, so the comparison isolates the attributes rather than the population. Note that attribute 197 is in the universal set and already present in B2, so it cannot contribute anything incremental: the attributes under test are 187, 188, 190, 241 and 242 only. An earlier version of E3 named 197 among the incremental attributes and set a 3 to 8% relative Brier threshold; both were errors, corrected before B3 was fitted (amendment log).
 - **E4** M1 and M2 beat B2 on discrimination by a small margin and are worse calibrated. This is the usual finding in risk prediction and is expected here. No recalibration step is applied to any model (section 10), so calibration is reported as the models produce it.
-- **E5** The delayed-entry estimate and an estimate fit only on the incident cohort agree within confidence intervals, **compared like for like**, meaning restricted to the same drive models and the same installation vintage. Disagreement under that comparison would indicate the truncation handling is wrong. A pooled comparison across all vintages does not test truncation, because at any given age the full cohort and the incident cohort contain different manufacturing vintages by construction (see section 12, limitation 9).
+- **E5** The delayed-entry estimate and an estimate fit only on the incident cohort agree within confidence intervals, **compared like for like**, meaning restricted to the same drive models and the same installation vintage. Disagreement under that comparison would indicate the truncation handling is wrong. A pooled comparison across all vintages does not test truncation, because at any given age the full cohort and the incident cohort contain different manufacturing vintages by construction (see section 12, limitation 10).
 - **E6** Proportional hazards is rejected by Schoenfeld residuals for at least the age term. Stratification by model absorbs part of this; a time-varying coefficient or an accelerated failure time specification is the documented fallback.
 
 ---
@@ -337,17 +365,62 @@ the optimal threshold sits and how strongly it depends on an assumption outside
 the analyst's control. A single fabricated cost ratio would be less honest and
 less useful.
 
-The closing result is a counterfactual over the test quarter: under threshold p,
-this many real failures would have been pre-empted, at the cost of this many
-unnecessary replacements, for a net expected saving of this much at cost ratio k.
+**The decision rule.** With `C_R` the cost of a planned replacement, `C_F` the
+cost of an unplanned failure, and `p_i(t)` the predicted probability of failure
+within the horizon, the myopic comparison is
+
+    cost of keeping  = p_i(t) * C_F
+    cost of replacing = C_R
+
+so replace when `p_i(t) > C_R / C_F = 1/k`. The threshold is therefore a direct
+function of the cost ratio, which is why sweeping k and sweeping the threshold are
+the same exercise.
+
+That rule ignores the remaining useful life discarded by replacing early, so the
+reported policy is the thresholded form
+
+    pi_tau:  replace drive i at time t if p_i(t) > tau
+
+evaluated over the held-out quarters by searching tau, rather than taken from the
+closed form above.
+
+**Policies compared**, so the risk-based policy is measured against real
+alternatives rather than against nothing:
+
+1. no predictive replacement, drives run to failure
+2. age-based replacement at a fixed power-on-hours threshold, itself swept
+3. risk-based replacement under `pi_tau`
+
+**Objective**, with the denominator defined rather than implied:
+
+    fleet cost rate = (replacement costs + failure costs) / total drive operating years
+
+**Reported quantities**: replacements triggered, observed failures, **projected**
+failures prevented, unnecessary replacements, fleet cost rate, and sensitivity to
+both `k` and the fleet hazard level.
+
+**A causal caution that governs how every result here is worded.** No
+intervention took place. If the model would have replaced a drive on day 3 and
+that drive was observed to fail on day 20, the correct statement is that the
+policy *would have removed the drive from service before its observed failure*
+under the simulator's assumptions. It is **not** that a failure was avoided: the
+counterfactual world in which the drive was replaced was never observed, and the
+replacement itself carries its own failure risk. Every such figure is labelled
+*projected* or *simulated*, and kept separate from measured held-out predictive
+performance.
 
 ---
 
 ## 11. Scope
 
-**Phase 1**, the shipped scope: ingest pipeline, survival table with spell
-splitting, B0 through B3, M1 and M2, the full evaluation suite, the Fine-Gray
-sensitivity analysis, the incident-cohort validation, and the decision layer.
+**Phase 1**, the shipped scope: ingest pipeline, survival tables with spell
+splitting, B0 through B3, M1 and M2, the full evaluation suite, the
+informative-censoring test, the incident-cohort and vintage-matched validation of
+delayed entry, the decision layer and fleet simulation, and **the README**. The
+README is a deliverable, not documentation of one: it carries the estimand, the
+pre-committed verdicts including the failures, the design decisions and their
+reasoning, and the limitations. A repository with results and no README is not a
+finished project.
 
 **Phase 2**, explicitly deferred and not a condition of completion: DeepHit for
 competing risks, shared frailty by manufacturing batch, and landmark-supermodel
@@ -361,15 +434,16 @@ elsewhere.
 
 ## 12. Stated limitations
 
-1. Weekly sampling means power-on hours at spell entry are known to within roughly 168 hours. Immaterial against lifetimes in the tens of thousands of hours, but stated.
-2. Backblaze does not publish why a drive left the fleet, so failure and non-failure removal cannot be separated from the source data. This was tested rather than assumed (`scripts/s2_censoring_check.py`). Removed drives carry roughly twice the prevalence of non-zero reallocated, pending and offline uncorrectable sectors as surviving drives, but matched on drive model and age that excess falls to 0.6, 0.3 and 0.3 percentage points respectively. Removals are also heavily concentrated by model, with a single model accounting for 50 to 99 percent of removals in most quarters. Both findings indicate wholesale retirement of ageing models rather than selection on individual drive health, which makes censoring conditionally independent given the model stratum and the power-on-hours time scale that the primary analysis already conditions on. A residual tail of under one percent of removals, concentrated in the HGST 12 TB models, does show genuine health selection and is reported separately. Fine-Gray therefore remains a sensitivity analysis, as pre-committed, rather than becoming the primary specification.
-3. Failure is Backblaze's operational definition, not a physical one.
-4. Raw SMART values are not comparable across manufacturers. Models are stratified accordingly, and no cross-vendor comparison of raw magnitudes is made.
-5. The window opens on 2024-01-01, so 84.9% of the cohort is left-truncated and the fleet's earlier history is unobserved.
-6. Fold 1 trains on six quarters against fold 3's nine, so early-fold results rest on less data. Per-fold reporting makes this visible rather than hiding it in a pooled average.
-7. Results describe one operator's datacenters, workload and procurement decisions. They do not describe hard drives in general.
-8. 726 of 9,790 events (7.4%) fall into no landmark window and are invisible to every model. Composition, measured in `scripts/s1b_coverage_audit.py`: 378 failed before the first landmark, which is burn-in from the 30 day change feature and costs training data only; 143 had a spell of roughly one day, giving a landmark model no history to predict from; 198 were excluded by the staleness rule because their most recent telemetry predated the landmark by more than 14 days; 7 entered after the last landmark. These exclusions are common to every model, so the comparison between models is unaffected, but reported performance is conditional on a drive being scorable at all. In particular **the model does not address infant mortality**: drives failing within days of installation are structurally outside a landmark framework, and no claim is made about them. The uncovered share rises from 0.7% in 2025 Q1 to 12.3% in 2026 Q1 as the fleet grows and newly installed drives make up more of the population, which reduces fold 3's effective event count from 998 to 875.
-9. E5 as originally specified compared pooled full-cohort survival against the incident cohort at fixed ages, and failed at age 2: 0.9831 against a band of [0.9842, 0.9865], a gap of 0.23 percentage points. That specification was not like for like. At age 2 the full cohort is 37% 2022 install vintage, 48% 2023 and 15% 2024, while the incident cohort is almost entirely 2024, since nothing installed later can reach age 2 within a 27 month window. Holding drive model fixed changed the gap by 0.000 pp, ruling out model composition. Holding installation vintage fixed resolves it: the 2024 vintage under delayed entry gives 0.98583 against the incident arm's 0.98622, a difference of 0.04 pp. Survival at age 2 across the 2022, 2023 and 2024 vintages spans 0.240 pp, which by itself exceeds the original gap. Delayed entry is therefore validated on the comparison that tests it. One residual anomaly is left unexplained rather than rationalised: pooled full-cohort survival at age 2 (0.98393) falls below all three individual vintage estimates, where a risk-set-weighted pooling should place it inside their range. The likely mechanism is that 2025 and 2026 installations contribute hazard at young ages without ever reaching age 2, but this was not verified. All quantities here are under a quarter of a percentage point, against a project whose predictions are 30 day risks at landmarks.
+1. Failure time is interval-censored. Backblaze records one snapshot per day, so a drive observed healthy on its last recorded day and gone the next failed somewhere inside that interval. Every failure row is retained regardless of the weekly sampling, so the interval is under 24 hours against lifetimes of tens of thousands of hours, and the analysis takes the recorded final day as the event time. Real, and immaterial at this scale.
+2. Weekly sampling means power-on hours at spell entry are known to within roughly 168 hours. Immaterial against lifetimes in the tens of thousands of hours, but stated.
+3. Backblaze does not publish why a drive left the fleet, so failure and non-failure removal cannot be separated from the source data. This was tested rather than assumed (`scripts/s2_censoring_check.py`). Removed drives carry roughly twice the prevalence of non-zero reallocated, pending and offline uncorrectable sectors as surviving drives, but matched on drive model and age that excess falls to 0.6, 0.3 and 0.3 percentage points respectively. Removals are also heavily concentrated by model, with a single model accounting for 50 to 99 percent of removals in most quarters. Both findings indicate wholesale retirement of ageing models rather than selection on individual drive health, which makes censoring conditionally independent given the model stratum and the power-on-hours time scale that the primary analysis already conditions on. A residual tail of under one percent of removals, concentrated in the HGST 12 TB models, does show genuine health selection and is reported separately. This is why no competing risks model is fitted (section 3): the finding is that censoring is conditionally independent given the covariates already in use, and the dataset carries no observed cause-of-exit label that a subdistribution hazard model would require.
+4. Failure is Backblaze's operational definition, not a physical one.
+5. Raw SMART values are not comparable across manufacturers. Models are stratified accordingly, and no cross-vendor comparison of raw magnitudes is made.
+6. The window opens on 2024-01-01, so 84.9% of the cohort is left-truncated and the fleet's earlier history is unobserved.
+7. Fold 1 trains on six quarters against fold 3's nine, so early-fold results rest on less data. Per-fold reporting makes this visible rather than hiding it in a pooled average.
+8. Results describe one operator's datacenters, workload and procurement decisions. They do not describe hard drives in general.
+9. 726 of 9,790 events (7.4%) fall into no landmark window and are invisible to every model. Composition, measured in `scripts/s1b_coverage_audit.py`: 378 failed before the first landmark, which is burn-in from the 30 day change feature and costs training data only; 143 had a spell of roughly one day, giving a landmark model no history to predict from; 198 were excluded by the staleness rule because their most recent telemetry predated the landmark by more than 14 days; 7 entered after the last landmark. These exclusions are common to every model, so the comparison between models is unaffected, but reported performance is conditional on a drive being scorable at all. In particular **the model does not address infant mortality**: drives failing within days of installation are structurally outside a landmark framework, and no claim is made about them. The uncovered share rises from 0.7% in 2025 Q1 to 12.3% in 2026 Q1 as the fleet grows and newly installed drives make up more of the population, which reduces fold 3's effective event count from 998 to 875.
+10. E5 as originally specified compared pooled full-cohort survival against the incident cohort at fixed ages, and failed at age 2: 0.9831 against a band of [0.9842, 0.9865], a gap of 0.23 percentage points. That specification was not like for like. At age 2 the full cohort is 37% 2022 install vintage, 48% 2023 and 15% 2024, while the incident cohort is almost entirely 2024, since nothing installed later can reach age 2 within a 27 month window. Holding drive model fixed changed the gap by 0.000 pp, ruling out model composition. Holding installation vintage fixed resolves it: the 2024 vintage under delayed entry gives 0.98583 against the incident arm's 0.98622, a difference of 0.04 pp. Survival at age 2 across the 2022, 2023 and 2024 vintages spans 0.240 pp, which by itself exceeds the original gap. Delayed entry is therefore validated on the comparison that tests it. One residual anomaly is left unexplained rather than rationalised: pooled full-cohort survival at age 2 (0.98393) falls below all three individual vintage estimates, where a risk-set-weighted pooling should place it inside their range. The likely mechanism is that 2025 and 2026 installations contribute hazard at young ages without ever reaching age 2, but this was not verified. All quantities here are under a quarter of a percentage point, against a project whose predictions are 30 day risks at landmarks.
 
 ---
 
@@ -488,3 +562,26 @@ test are 187, 188, 190, 241 and 242.
 
 The directional part of E3, that 187 dominates and the rest contribute little,
 was scale free and testable and is retained unchanged.
+
+**2026-09-16, Fine-Gray removed, decision layer reformulated, estimand and README
+added to scope.** B0 through B3 fitted; M1, M2 and the decision layer not yet
+built. Prompted by an external critique of the project plan, several points of
+which were correct.
+
+Fine-Gray is removed from all scope rather than demoted. A subdistribution hazard
+model requires an observed cause-of-exit label, and this dataset has none: the
+"removed" category is inferred from the timing of disappearance. Fitting it would
+imply information the public data does not contain. The informative-censoring
+test in `s2_censoring_check.py` is what the data actually supports, and it has
+already been run.
+
+Section 10 previously said the policy result would report how many real failures
+"would have been pre-empted". That is a causal claim about an unobserved
+counterfactual and is not supportable: no intervention occurred, and a replacement
+drive carries its own failure risk. All such quantities are now labelled projected
+or simulated. The section also now states the cost equation explicitly, defines
+the cost rate denominator, and compares the risk-based policy against
+run-to-failure and age-based alternatives rather than against nothing.
+
+An explicit estimand was added as section 1, and the README was added to Phase 1
+scope, having been absent from it.
