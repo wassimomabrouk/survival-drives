@@ -102,6 +102,45 @@ def build_features(df: pd.DataFrame) -> tuple[np.ndarray, list[str]]:
     return X, names
 
 
+def drop_redundant(X: np.ndarray, names: list[str], keep=None, tol: float = 1e-6):
+    """Drop columns that duplicate an earlier column, and constant columns.
+
+    Some SMART attributes are the same underlying value under two attribute
+    numbers on a given firmware. On Seagate drives 190 (airflow temperature
+    difference) and 194 (temperature) are identical, as are 197 (current pending
+    sectors) and 198 (offline uncorrectable). Correlations are exactly 1.0000, not
+    approximately, so the design matrix is genuinely rank deficient and the
+    affected coefficients are not identified.
+
+    Detection is per cohort, because the duplication is a firmware property: 197
+    and 198 differ across the full fleet and coincide within Seagate. The mask is
+    computed on the training rows and reused for validation and test, so the
+    design stays identical across windows.
+
+    Returns (X_kept, names_kept, keep_mask, dropped) where `dropped` lists each
+    removed column with the column it duplicates.
+    """
+    dropped = []
+    if keep is None:
+        p = X.shape[1]
+        keep = np.ones(p, dtype=bool)
+        sd = X.std(axis=0)
+        for j in range(p):
+            if sd[j] < 1e-12:
+                keep[j] = False
+                dropped.append((names[j], "constant"))
+                continue
+            for i in range(j):
+                if not keep[i] or sd[i] < 1e-12:
+                    continue
+                r = float(np.corrcoef(X[:, i], X[:, j])[0, 1])
+                if abs(r) > 1.0 - tol:
+                    keep[j] = False
+                    dropped.append((names[j], f"duplicate of {names[i]} (r={r:+.4f})"))
+                    break
+    return X[:, keep], [n for n, k in zip(names, keep) if k], keep, dropped
+
+
 def standardise(X: np.ndarray, mu=None, sd=None):
     if mu is None:
         mu, sd = X.mean(axis=0), X.std(axis=0)
@@ -265,13 +304,17 @@ def main() -> int:
         f"SELECT * FROM read_parquet('{(tables / 'landmarks.parquet').as_posix()}')"
     )
 
-    def design(df, b1, mu=None, sd=None):
+    def design(df, b1, mu=None, sd=None, keep=None):
         Xr, names = build_features(df)
+        Xr, names, keep, dropped = drop_redundant(Xr, names, keep)
+        if dropped:
+            for nm, why in dropped:
+                print(f"    dropping {nm}: {why}")
         Xs, mu, sd = standardise(Xr, mu, sd)
         X = np.column_stack([np.ones(len(Xs)), Xs])
         off = (np.maximum(b1["h_b1"].to_numpy(float), 1e-12)
                * np.maximum(df["expo"].to_numpy(float), 1e-6))
-        return X, off, df["fail"].to_numpy(float), names, mu, sd
+        return X, off, df["fail"].to_numpy(float), names, mu, sd, keep
 
     rows, pooled, coef_last, lam_rows = [], [], None, []
     for name, val_start, test_start, test_end in FOLDS:
@@ -289,8 +332,8 @@ def main() -> int:
         # Choose the L2 penalty on the validation quarter, using a model fitted
         # only on data before it. The penalty is a hyperparameter, so it must not
         # be chosen on the test quarter.
-        Xi, oi, yi, names, mu, sd = design(inner, fit_predict(inner, inner))
-        Xv, ov, yv, _, _, _ = design(val, fit_predict(inner, val), mu, sd)
+        Xi, oi, yi, names, mu, sd, keep = design(inner, fit_predict(inner, inner))
+        Xv, ov, yv, _, _, _, _ = design(val, fit_predict(inner, val), mu, sd, keep)
         best = None
         for lam in L2_GRID:
             b, it, _, ok = fit_poisson_offset(Xi, yi, oi, lam=lam)
@@ -312,7 +355,7 @@ def main() -> int:
         b1_train = fit_predict(train, train)
         b1_test = fit_predict(train, test)
 
-        Xtr, off_tr, y_tr, names, mu, sd = design(train, b1_train)
+        Xtr, off_tr, y_tr, names, mu, sd, keep = design(train, b1_train)
 
         cond = np.linalg.cond(Xtr.T @ Xtr)
         print(f"  design matrix condition number {cond:.3e}")
@@ -340,7 +383,7 @@ def main() -> int:
         coef["fold"] = name
         coef_last = coef
 
-        Xte, _, _, _, _, _ = design(test, b1_test, mu, sd)
+        Xte, _, _, _, _, _ = design(test, b1_test, mu, sd, keep)[:6]
         h_b2 = np.maximum(b1_test["h_b1"].to_numpy(float), 1e-12) * \
             np.exp(np.clip(Xte @ beta, -30, 30))
 
