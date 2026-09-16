@@ -283,9 +283,17 @@ lifetime question rather than a horizon-specific one.
 - **B1** Nonparametric hazard by drive model and half-year age band, estimated as events over exposure with Gamma-Poisson shrinkage toward the model-level and global rates. No SMART attributes.
 - **B2** Cox on landmark rows with the Cohort A universal SMART set, stratified by drive model
 - **B3** As B2 plus the Seagate-only attributes, Cohort B only
-- **M1** Random Survival Forest
-- **M2** Gradient-boosted Cox
+- **M2** Boosted trees on the same target as B2: XGBoost with a Poisson objective, the B1 hazard as a per-row offset, and log exposure carried through `base_margin`. Identical target, identical offset, identical rows as B2; only the functional form changes, from log-linear to boosted trees. That is what makes it a clean test of whether nonlinearity and interactions among SMART attributes buy anything.
 - **M3** DeepHit, phase 2 only (section 11)
+
+**M1, Random Survival Forest, was in this ladder and has been removed.** Two
+reasons, neither of them that it would have performed poorly. It cannot be fitted
+on the same rows: a survival forest will not take 7.5 million rows and would
+require case-control subsampling, breaking the identical-rows comparability that
+every other model here follows. And it is not a different model family from M2 in
+any meaningful sense, since both are tree ensembles, so it answers the same
+question as M2 with more caveats and less comparability rather than providing
+independent corroboration.
 
 B1 is the baseline that matters. Beating B0 is trivial; beating a model-and-age
 model is the real test of whether SMART telemetry carries information. B1 is
@@ -328,7 +336,7 @@ Recorded now so that neither outcome can be rationalised afterwards.
   - **Directional**: among the five attributes actually under test, 187 (reported uncorrectable errors) carries most of any gain, while 188, 190, 241 and 242 contribute little. This is checked by refitting with 187 alone added and comparing against the full set.
 
   Both arms are fitted on the same Seagate cohort, so the comparison isolates the attributes rather than the population. Note that attribute 197 is in the universal set and already present in B2, so it cannot contribute anything incremental: the attributes under test are 187, 188, 190, 241 and 242 only. An earlier version of E3 named 197 among the incremental attributes and set a 3 to 8% relative Brier threshold; both were errors, corrected before B3 was fitted (amendment log).
-- **E4** M1 and M2 beat B2 on discrimination by a small margin and are worse calibrated. This is the usual finding in risk prediction and is expected here. No recalibration step is applied to any model (section 10), so calibration is reported as the models produce it.
+- **E4** M2 beats B2 on discrimination by a small margin and is no better calibrated. Declared **before M2 exists**, judged as E2 and E3 are: IPCW AUC improves with a spell-level paired bootstrap interval on the difference excluding zero, and IPCW Brier reported raw and at oracle level with no threshold. "Small" is a directional expectation, not a criterion: B2's log-linear form already captures most of the signal in monotone SMART counters, so the margin from nonlinearity should be well under the +0.187 that SMART itself bought over B1. A large gain would mean interactions matter far more than expected and is worth reporting as a surprise. No recalibration step is applied to any model (section 10), so calibration is reported as the models produce it.
 - **E5** The delayed-entry estimate and an estimate fit only on the incident cohort agree within confidence intervals, **compared like for like**, meaning restricted to the same drive models and the same installation vintage. Disagreement under that comparison would indicate the truncation handling is wrong. A pooled comparison across all vintages does not test truncation, because at any given age the full cohort and the incident cohort contain different manufacturing vintages by construction (see section 12, limitation 10).
 - **E6** Proportional hazards is rejected by Schoenfeld residuals for at least the age term. Stratification by model absorbs part of this; a time-varying coefficient or an accelerated failure time specification is the documented fallback.
 
@@ -414,7 +422,7 @@ performance.
 ## 11. Scope
 
 **Phase 1**, the shipped scope: ingest pipeline, survival tables with spell
-splitting, B0 through B3, M1 and M2, the full evaluation suite, the
+splitting, B0 through B3, M2, the full evaluation suite, the
 informative-censoring test, the incident-cohort and vintage-matched validation of
 delayed entry, the decision layer and fleet simulation, and **the README**. The
 README is a deliverable, not documentation of one: it carries the estimand, the
@@ -585,3 +593,24 @@ run-to-failure and age-based alternatives rather than against nothing.
 
 An explicit estimand was added as section 1, and the README was added to Phase 1
 scope, having been absent from it.
+
+**2026-09-16, M1 removed from the ladder, M2 respecified, E4 restated.** B0
+through B3 fitted; no ML model fitted.
+
+M1 (Random Survival Forest) is dropped. Not because it would have performed
+poorly, but because it cannot be fitted on the same rows as every other model:
+a survival forest will not take 7.5 million rows and would need case-control
+subsampling, which breaks the identical-rows comparability the ladder depends on.
+It is also not an independent model family, since M2 is likewise a tree ensemble,
+so it would answer the same question with more caveats rather than corroborating
+it.
+
+M2 changes from "gradient-boosted Cox" to XGBoost with a Poisson objective and
+the B1 hazard as a per-row offset. The reason is nesting: this form has exactly
+the same target, offset and exposure handling as B2, so the only difference
+between them is log-linear against boosted trees. A gradient-boosted Cox model
+would have changed the estimator and the target at once, making any difference
+uninterpretable.
+
+E4 previously referenced M1 and carried no decision criterion. It now applies the
+same paired-bootstrap test as E2 and E3, fixed before M2 was fitted.
