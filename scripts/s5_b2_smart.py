@@ -250,7 +250,7 @@ def load_window(con, lo: str | None, hi: str, smart_cols: list[str]) -> pd.DataF
     return con.execute(
         f"""
         SELECT
-            spell_key, model,
+            spell_key, model, landmark, poh_at_landmark,
             CAST(poh_at_landmark / {BAND_HOURS} AS INTEGER) * {BAND_HOURS} AS age_band,
             t_days, status,
             fail_{HORIZON_DAYS}d AS fail,

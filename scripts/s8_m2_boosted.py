@@ -238,6 +238,16 @@ def main() -> int:
     all_test = pd.concat(pooled, ignore_index=True)
     print(f"\npooled: {len(all_test):,} rows, {int(all_test['fail'].sum()):,} events")
 
+    # Persist the held-out predictions so the decision layer consumes them rather
+    # than refitting every model. These are test rows only: each was scored by a
+    # model trained strictly before its quarter.
+    keep_cols = ["spell_key", "model", "landmark", "poh_at_landmark", "t_days",
+                 "status", "fail", "expo", "risk_b1", "risk_b2", "risk_m2"]
+    preds = all_test[[c for c in keep_cols if c in all_test.columns]].copy()
+    pred_path = tables / "predictions.parquet"
+    preds.to_parquet(pred_path, index=False)
+    print(f"held-out predictions written to {pred_path} ({len(preds):,} rows)")
+
     # Oracle level, as for B2 and B3: one constant per model fitted on the test
     # rows. Diagnostic only, never a reported model.
     expo_te = all_test["expo"].to_numpy(float)
