@@ -239,21 +239,35 @@ def plot_survival_by_model(curves: dict[str, pd.DataFrame], overall: pd.DataFram
     plt.close(fig)
 
 
+MIN_BAND_EVENTS = 20
+
+
 def plot_hazard(bands: pd.DataFrame, km: pd.DataFrame, path: Path) -> None:
+    # Beyond the last age band holding a usable number of events the estimate is
+    # not thin, it is absent: the curve would sit at exactly zero for want of
+    # drives rather than for want of failures, which reads as a defect. Truncate
+    # instead and say where.
+    usable = bands[bands["events"] >= MIN_BAND_EVENTS]
+    cutoff = float(usable["age_years"].max()) if len(usable) else float(bands["age_years"].max())
+    b = bands[bands["age_years"] <= cutoff]
+
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
 
-    ax1.plot(bands["age_years"], bands["afr_pct"], marker="o", ms=3.5, lw=1.5, color="#B3412C")
+    ax1.plot(b["age_years"], b["afr_pct"], marker="o", ms=3.5, lw=1.5, color="#B3412C")
     ax1.set_xlabel("drive age (years of power on time)")
     ax1.set_ylabel("annualised failure rate (%)")
     ax1.set_title("Hazard by age band, events over exposure")
-    ax1.set_xlim(0, 12)
+    ax1.set_xlim(0, cutoff * 1.05)
     ax1.grid(alpha=0.25, lw=0.6)
+    ax1.text(0.98, 0.04, f"truncated at {cutoff:.1f} years, where age bands stop\n"
+             f"holding {MIN_BAND_EVENTS}+ failures",
+             transform=ax1.transAxes, fontsize=8, color="#555555", ha="right")
 
     ax2.step(km["age_years"], km["cum_hazard"], where="post", lw=1.8, color="#1F3A5F")
     ax2.set_xlabel("drive age (years of power on time)")
     ax2.set_ylabel("cumulative hazard")
     ax2.set_title("Nelson-Aalen cumulative hazard")
-    ax2.set_xlim(0, 12)
+    ax2.set_xlim(0, cutoff * 1.05)
     ax2.grid(alpha=0.25, lw=0.6)
 
     fig.tight_layout()
@@ -276,8 +290,11 @@ def plot_incident_validation(full: pd.DataFrame, incident: pd.DataFrame, path: P
     ax.set_ylabel("surviving fraction")
     ax.set_title("E5 validation: delayed entry against an untruncated cohort")
     ax.set_xlim(0, 3)
+    lo = min(full.loc[full["age_years"] <= 3, "survival"].min(),
+             incident["survival"].min() if not incident.empty else 1.0)
+    ax.set_ylim(lo - 0.004, 1.001)     # the whole story sits in the top 2%
     ax.grid(alpha=0.25, lw=0.6)
-    ax.legend(fontsize=9, frameon=False)
+    ax.legend(fontsize=9, frameon=False, loc="lower left")
     fig.tight_layout()
     fig.savefig(path, dpi=150)
     plt.close(fig)

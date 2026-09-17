@@ -286,9 +286,6 @@ def main() -> int:
     ax.set_title("Risk-based replacement: where the threshold pays, by cost ratio")
     ax.grid(alpha=0.25, lw=0.6)
     ax.legend(fontsize=9, frameon=False, loc="upper right")
-    ax.text(0.01, 0.03, "below the dashed line the policy is cheaper than running to failure\n"
-            "markers show each curve's optimum; y-axis clipped at 2.0",
-            transform=ax.transAxes, fontsize=8, color="#555555")
     fig.tight_layout()
     fig.savefig(figures / "s9_cost_rate_vs_threshold.png", dpi=150)
     plt.close(fig)
