@@ -258,42 +258,90 @@ def main() -> int:
         print(sens_df.to_string(index=False))
 
     # ------------------------------------------------------------------ figures
-    fig, ax = plt.subplots(figsize=(9, 5.5))
+    # The y-axis is deliberately clipped. Aggressive thresholds drive the cost
+    # rate to 30x run-to-failure, which on a full scale squashes the entire region
+    # where the decision is actually made into a flat line at the bottom.
     rb = sweep[sweep["policy"] == "risk-based"].sort_values("parameter")
     ab = sweep[sweep["policy"] == "age-based"].sort_values("parameter")
-    for k, c in zip((2, 5, 10, 20), ("#9CC3D5", "#5B8FA8", "#2F5F7A", "#1F3A5F")):
+
+    def rel(frame, k):
         rtf = sweep.loc[sweep["policy"] == "run-to-failure", f"cost_rate_k{k}"].iloc[0]
-        ax.plot(rb["parameter"], rb[f"cost_rate_k{k}"] / rtf, lw=1.7,
-                color=c, label=f"k = {k}")
-    ax.axhline(1.0, color="#B3412C", lw=1.2, ls="--", label="run-to-failure")
+        return frame[f"cost_rate_k{k}"] / rtf
+
+    shades = {2: "#9CC3D5", 5: "#5B8FA8", 10: "#2F5F7A", 20: "#1F3A5F", 50: "#0F2436"}
+
+    # 1. threshold sweep, zoomed to the decision region
+    fig, ax = plt.subplots(figsize=(9, 5.5))
+    for k in (2, 5, 10, 20, 50):
+        y = rel(rb, k)
+        ax.plot(rb["parameter"], y, lw=1.8, color=shades[k], label=f"k = {k}")
+        i = y.idxmin()
+        ax.plot(rb.loc[i, "parameter"], y.loc[i], "o", ms=6, color=shades[k],
+                markeredgecolor="white", markeredgewidth=1.2, zorder=5)
+    ax.axhline(1.0, color="#B3412C", lw=1.3, ls="--", label="run-to-failure")
     ax.set_xscale("log")
+    ax.set_ylim(0.4, 2.0)
     ax.set_xlabel("replacement threshold tau (predicted 30 day failure risk)")
     ax.set_ylabel("cost rate relative to run-to-failure")
-    ax.set_title("Risk-based replacement: cost rate against threshold, by cost ratio")
+    ax.set_title("Risk-based replacement: where the threshold pays, by cost ratio")
     ax.grid(alpha=0.25, lw=0.6)
-    ax.legend(fontsize=9, frameon=False)
+    ax.legend(fontsize=9, frameon=False, loc="upper right")
+    ax.text(0.01, 0.03, "below the dashed line the policy is cheaper than running to failure\n"
+            "markers show each curve's optimum; y-axis clipped at 2.0",
+            transform=ax.transAxes, fontsize=8, color="#555555")
     fig.tight_layout()
     fig.savefig(figures / "s9_cost_rate_vs_threshold.png", dpi=150)
     plt.close(fig)
 
-    fig, ax = plt.subplots(figsize=(9, 5.5))
-    for k, c in zip((5, 10, 20), ("#9CC3D5", "#2F5F7A", "#1F3A5F")):
-        rtf = sweep.loc[sweep["policy"] == "run-to-failure", f"cost_rate_k{k}"].iloc[0]
-        ax.plot(rb["parameter"], rb[f"cost_rate_k{k}"] / rtf, lw=1.8, color=c,
-                label=f"risk-based, k = {k}")
-    for k, c in zip((5, 10, 20), ("#E5B9AE", "#C77B69", "#B3412C")):
-        rtf = sweep.loc[sweep["policy"] == "run-to-failure", f"cost_rate_k{k}"].iloc[0]
-        ax.plot(ab["parameter"] / 8760.0, ab[f"cost_rate_k{k}"] / rtf, lw=1.4,
-                ls="--", color=c, label=f"age-based, k = {k}")
-    ax.axhline(1.0, color="grey", lw=1.0, ls=":")
-    ax.set_xscale("log")
-    ax.set_xlabel("policy parameter: tau (risk) or age in years (age-based)")
-    ax.set_ylabel("cost rate relative to run-to-failure")
-    ax.set_title("Risk-based against age-based replacement")
-    ax.grid(alpha=0.25, lw=0.6)
-    ax.legend(fontsize=8, frameon=False, ncol=2)
+    # 2. two panels, because tau and age are not comparable quantities and do not
+    #    belong on a shared axis
+    fig, (a1, a2) = plt.subplots(1, 2, figsize=(12, 5.2), sharey=True)
+    for k in (5, 10, 20):
+        a1.plot(rb["parameter"], rel(rb, k), lw=1.9, color=shades[k], label=f"k = {k}")
+        a2.plot(ab["parameter"] / 8760.0, rel(ab, k), lw=1.9, color=shades[k],
+                label=f"k = {k}")
+    for a, title, xl in ((a1, "Risk-based: replace when predicted risk > tau",
+                          "tau (predicted 30 day failure risk)"),
+                         (a2, "Age-based: replace when age > threshold",
+                          "age threshold (years of power on time)")):
+        a.axhline(1.0, color="#B3412C", lw=1.3, ls="--")
+        a.set_xlabel(xl)
+        a.set_title(title, fontsize=11)
+        a.grid(alpha=0.25, lw=0.6)
+    a1.set_xscale("log")          # risk spans orders of magnitude
+    a2.set_xscale("linear")       # age does not, and log ticks read as 6 x 10^0
+    a1.set_ylim(0.4, 2.5)
+    a1.set_ylabel("cost rate relative to run-to-failure")
+    a1.legend(fontsize=9, frameon=False, loc="upper right")
+    a2.text(0.97, 0.06, "never falls below the line at any cost ratio",
+            transform=a2.transAxes, fontsize=9.5, color="#B3412C", ha="right")
+    fig.suptitle("Age alone is not a usable replacement signal; predicted risk is",
+                 fontsize=12.5)
     fig.tight_layout()
     fig.savefig(figures / "s9_risk_vs_age_policy.png", dpi=150)
+    plt.close(fig)
+
+    # 3. the actual headline: best achievable cost rate against the cost ratio
+    fig, ax = plt.subplots(figsize=(8.5, 5.4))
+    for pol, colour, style in (("risk-based", "#1F3A5F", "-"),
+                               ("age-based", "#B3412C", "--")):
+        ys = [best[(best["k"] == k) & (best["policy"] == pol)]["vs_run_to_failure_pct"].iloc[0]
+              for k in K_GRID]
+        ax.plot(K_GRID, ys, style, marker="o", ms=6, lw=2, color=colour,
+                label=f"{pol} (best threshold)")
+    ax.axhline(0.0, color="grey", lw=1.3, ls=":", label="run-to-failure")
+    ax.set_xscale("log")
+    ax.set_xticks(K_GRID)
+    ax.set_xticklabels([str(k) for k in K_GRID])
+    ax.set_xlabel("cost ratio k = cost of unplanned failure / cost of planned replacement")
+    ax.set_ylabel("change in fleet cost rate (%)")
+    ax.set_title("What predictive replacement is worth, as a function of the cost ratio")
+    ax.grid(alpha=0.25, lw=0.6)
+    ax.legend(fontsize=9, frameon=False, loc="lower left")
+    ax.text(0.98, 0.95, "negative is cheaper than running to failure",
+            transform=ax.transAxes, fontsize=8.5, color="#555555", ha="right")
+    fig.tight_layout()
+    fig.savefig(figures / "s9_value_vs_cost_ratio.png", dpi=150)
     plt.close(fig)
 
     # ------------------------------------------------------------------ headline
