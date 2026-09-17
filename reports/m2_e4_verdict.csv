@@ -1,0 +1,2 @@
+auc_difference,auc_lo,auc_hi,auc_pass,brier_difference,calibration_spread_b2,calibration_spread_m2,verdict
+0.028716049144349776,0.024309862049248485,0.032172656439694025,True,-1.95751474064812e-05,0.4860983789736728,0.46108954184985795,E4 HOLDS
