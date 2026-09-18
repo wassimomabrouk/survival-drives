@@ -101,17 +101,24 @@ def figure_calibration(tables: Path, figures: Path) -> None:
         spread = c["ratio_obs_pred"].max() - c["ratio_obs_pred"].min()
         print(f"  {label}: decile spread {spread:.3f}")
 
-    lim *= 1.08
-    ax.plot([0, lim], [0, lim], color="#999999", lw=1.1, ls="--",
+    # Log-log axes. Predicted risks span two orders of magnitude across the
+    # deciles, and on a linear scale the eight lowest deciles of every model pile
+    # into the bottom-left corner while the axis is set by the top decile of
+    # whichever model predicts highest.
+    lim *= 1.3
+    lo = 2e-4
+    ax.plot([lo, lim], [lo, lim], color="#999999", lw=1.1, ls="--",
             label="perfect calibration")
-    ax.set_xlim(0, lim)
-    ax.set_ylim(0, lim)
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_xlim(lo, lim)
+    ax.set_ylim(lo, lim)
     ax.set_xlabel("mean predicted 30 day risk")
     ax.set_ylabel("observed 30 day risk (IPCW)")
     ax.set_title("Calibration by predicted risk decile, pooled held-out quarters")
     ax.grid(alpha=0.25, lw=0.6)
     ax.legend(fontsize=9, frameon=False, loc="upper left")
-    ax.text(0.98, 0.03, "points below the diagonal mean the model over-predicts",
+    ax.text(0.97, 0.05, "points below the diagonal mean the model over-predicts",
             transform=ax.transAxes, fontsize=8.5, color="#555555", ha="right")
     fig.tight_layout()
     fig.savefig(figures / "summary_calibration.png", dpi=150)

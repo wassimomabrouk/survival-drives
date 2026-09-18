@@ -285,7 +285,10 @@ def main() -> int:
         with pd.option_context("display.width", 200, "display.float_format", "{:.4f}".format):
             print(seagate_only[["feature", "hazard_ratio", "hr_lo", "hr_hi", "z"]]
                   .to_string(index=False))
-        plot_incremental(full, figures / "b3_seagate_attributes.png")
+        # Coefficient forest plot removed. SMART counters are collinear, so the
+        # individual hazard ratios are not reliably interpretable, and a forest
+        # plot invites exactly that reading. The full table stays in
+        # reports/, and the predictive comparison is the reportable result.
 
     all_test = pd.concat(pooled, ignore_index=True)
     print(f"\npooled Seagate: {len(all_test):,} rows, "

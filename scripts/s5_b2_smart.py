@@ -419,8 +419,10 @@ def main() -> int:
         with pd.option_context("display.width", 200, "display.float_format", "{:.4f}".format):
             print(coef_last[["feature", "hazard_ratio", "hr_lo", "hr_hi", "z"]]
                   .to_string(index=False))
-        plot_coefficients(coef_last[coef_last["feature"] != "intercept"],
-                          figures / "b2_coefficients.png")
+        # Coefficient forest plot removed. SMART counters are collinear, so the
+        # individual hazard ratios are not reliably interpretable, and a forest
+        # plot invites exactly that reading. The full table stays in
+        # reports/, and the predictive comparison is the reportable result.
 
     all_test = pd.concat(pooled, ignore_index=True)
     print(f"\npooled: {len(all_test):,} rows, {int(all_test['fail'].sum()):,} events")
