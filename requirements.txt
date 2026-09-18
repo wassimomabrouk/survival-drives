@@ -1,0 +1,29 @@
+# Dependencies for the fleet reliability and replacement policy project.
+#
+#     py -m pip install -r requirements.txt
+#
+# Lower bounds rather than exact pins. The analysis uses stable, long-standing
+# APIs in all six packages, so it is not version-fragile, and pinning exactly
+# would make the project fail to install on a machine with newer releases for no
+# benefit. The versions the committed results were produced with are recorded at
+# the bottom of this file.
+#
+# Python 3.10 or newer is required: the code uses PEP 604 union types (`str | None`).
+
+duckdb>=1.0            # ingest, survival table construction, all SQL
+pandas>=2.0            # tabular manipulation and report output
+numpy>=1.24            # numerics, the hand-rolled estimators, the bootstrap
+matplotlib>=3.7        # figures
+xgboost>=2.0           # M2 only, boosted trees with a Poisson objective
+pyarrow>=14.0          # Parquet read and write, used by pandas
+
+# Not required, and deliberately so: no survival analysis library. Kaplan-Meier
+# with delayed entry, Nelson-Aalen, the IPCW Brier score, time-dependent AUC and
+# the penalised Poisson hazard model are all implemented directly in
+# scripts/evaluation.py and the model scripts. Correct handling of left
+# truncation and of censoring inside the prediction horizon is a central claim of
+# this project, so those computations are visible in the repository rather than
+# delegated to a library call.
+#
+# Versions used to produce the committed results:
+#   duckdb 1.5.5, pandas 2.3.3, numpy 2.5.2, xgboost 3.4.1
