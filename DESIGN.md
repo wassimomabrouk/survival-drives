@@ -1,8 +1,14 @@
 # Fleet reliability and replacement policy: design document
 
-Status: locked before any model is fit. Baselines, metrics, validation protocol
-and directional expectations are all pre-committed below. Nothing in sections 5
-to 9 may be changed after the first model is trained.
+Status: locked before any model was fit. Baselines, metrics, validation protocol
+and directional expectations were all pre-committed below, and each was committed
+to git before the model it concerns existed. Nothing in sections 5 to 9 could be
+changed after the first model was trained.
+
+**Section 14 records what happened against each pre-commitment, including the one
+that failed. Section 13 logs every amendment made during the work, with its date,
+its reason, and which models had been fitted at the time.** Changes were made;
+they were made in the open and before the results they could have been fitted to.
 
 ---
 
@@ -614,3 +620,74 @@ uninterpretable.
 
 E4 previously referenced M1 and carried no decision criterion. It now applies the
 same paired-bootstrap test as E2 and E3, fixed before M2 was fitted.
+
+---
+
+## 14. Results against the pre-commitments
+
+Every expectation in section 9 was fixed and committed to git before the model it
+concerns was fitted. This section records what happened, including the failures.
+It is the reason the document exists: a design that can be quietly edited after
+seeing results proves nothing.
+
+### Expectations
+
+| | expectation | verdict |
+|---|---|---|
+| **E1** | B1 beats B0 modestly | **held.** IPCW AUC +0.0667 [+0.0580, +0.0775], Brier -5.63e-07 [-6.47e-07, -4.98e-07]. Both paired intervals exclude zero. |
+| **E2** | B2 beats B1 | **failed.** AUC passed convincingly at +0.1873 [+0.1760, +0.1994], but Brier did not improve (+6.1e-06, interval spanning zero) and calibration degraded, decile spread 0.312 to 0.460. Two of three criteria missed. |
+| **E3** | B3 beats B2 on the Seagate cohort; 187 carries most of the gain, the other four contribute little | **held on the primary criterion, and the directional claim is half wrong.** AUC +0.0248 [+0.0183, +0.0337], Brier improved at both raw and oracle level. Attribute 187 carries 72.2% of the gain, so "187 dominates" holds. But the other four contribute +0.0069 [+0.0039, +0.0117], an interval comfortably excluding zero, so "contribute little" does not. |
+| **E4** | M2 beats B2 by a small margin and is no better calibrated | **held, with one part wrong in the favourable direction.** AUC +0.0287 [+0.0243, +0.0322], which is indeed small against the +0.187 SMART bought over B1. Brier improved at raw and oracle level. Calibration came out marginally *better*, 0.486 to 0.461, where the expectation said no better. |
+| **E5** | the delayed-entry estimate agrees with an untruncated cohort | **held once the comparison was specified correctly.** As originally written it failed at age 2 by 0.23 percentage points. That specification was not like for like: the two arms contain different installation vintages at the same age by construction. Matched on drive model and installation vintage, the delayed-entry estimate gives 0.98583 against the incident cohort's 0.98622, a gap of 0.04 pp. Vintage spread alone (0.240 pp) exceeds the original discrepancy. |
+| **E6** | proportional hazards is rejected by Schoenfeld residuals for the age term | **not tested, and no longer testable.** E6 assumed a Cox model. The frame changed before B2 to a piecewise-exponential hazard with the B1 estimate as offset, which carries no proportional hazards assumption to reject. Recorded as superseded rather than quietly dropped. |
+
+Three of five testable expectations held as written, one failed, one held on its
+primary criterion with its directional claim half wrong.
+
+### Research questions
+
+**RQ1, dynamic risk.** Yes for ranking, qualified for probabilities. The best
+model (M2) reaches IPCW AUC 0.874 pooled across three held-out quarters, 0.880,
+0.867 and 0.875 individually, from 0.606 for age alone. But every model
+over-predicts: mean predicted risk 0.00114 against 0.00092 observed for M2, and
+the calibration curves sit parallel to and below the diagonal. That is level
+error rather than shape error, which is why section 10 sweeps the level instead
+of correcting it.
+
+**RQ2, the vendor gap.** Small but real. The universal-attribute model already
+reaches AUC 0.856 on Seagate drives; all five Seagate-only attributes lift it to
+0.881. So a mixed-vendor fleet restricted to universally reported telemetry gives
+up roughly 2.5 AUC points, of which 72% would be recovered by attribute 187
+alone. Two further findings emerged in answering it: attribute 190 duplicates the
+universal attribute 194 exactly on Seagate firmware and contributes nothing, and
+197 and 198 are likewise identical within Seagate while differing across the full
+fleet.
+
+**RQ3, the decision.** Break-even sits just below a cost ratio of k = 2. Above
+it, risk-based replacement lowers the fleet cost rate: -9.3% at k = 5, -24.7% at
+k = 10, -50.6% at k = 50. The recommendation is stable under the fleet hazard
+level coming in 20% either way, which is the quantity the rejected recalibration
+tried and failed to estimate. Age-based replacement never pays at any cost ratio
+tested, which is what justifies the modelling: drive age is free and a policy
+built on it is worse than doing nothing.
+
+### Measured quantities
+
+| quantity | value |
+|---|---|
+| drives / spells / landmark rows | 384,213 / 391,275 / 8.5 million |
+| failure events | 9,790, reconciling exactly with the source flags |
+| fleet annualised failure rate, held-out window | 1.107% |
+| peak hazard | 3.14% annualised, at 6.2 years of power-on time |
+| AUC, B0 / B1 / B2 / M2 | 0.606 / 0.672 / 0.847 / 0.874 |
+| events in the three held-out quarters | 1,020 / 781 / 880 |
+
+### Phase 1 status
+
+Complete: ingest pipeline, survival tables, informative-censoring test,
+delayed-entry validation, B0 through B3, M2, evaluation suite, decision layer and
+fleet simulation. Remaining: this README.
+
+Removed from Phase 1 during the work, each with a logged reason: Fine-Gray (no
+observed cause-of-exit label in the data) and M1 (could not be fitted on the same
+rows as the rest of the ladder).
