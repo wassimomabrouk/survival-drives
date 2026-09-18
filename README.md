@@ -2,9 +2,9 @@
 
 **When should a datacenter replace a hard drive that has not failed yet?**
 
-Thirteen years of Backblaze Drive Stats telemetry, framed as a survival analysis
-problem, turned into a replacement policy and evaluated against the alternatives
-on quarters the models never saw.
+Two years of Backblaze Drive Stats telemetry, 36 million drive days across
+384,213 drives, framed as a survival analysis problem, turned into a replacement
+policy and evaluated against the alternatives on quarters the models never saw.
 
 ![What predictive replacement is worth](figures/s9_value_vs_cost_ratio.png)
 
@@ -115,9 +115,9 @@ never observed, and the replacement drive would carry its own risk.
 
 ## Why the survival setup is not standard
 
-Most published analyses of this dataset treat it as binary classification at a
-fixed horizon. That discards censored drives, which are the overwhelming majority,
-and cannot answer *when*. Four things here are done differently.
+A fixed-horizon binary classification of this data discards censored drives, which
+are the overwhelming majority, and cannot answer *when*. Four things here are done
+differently.
 
 **Power-on hours as the time scale, with delayed entry.** A drive's first
 observation typically shows tens of thousands of hours already accumulated: the
@@ -203,8 +203,9 @@ mkdir data\zips data\parquet reports figures
 Download the eight quarterly archives from
 [Backblaze Drive Stats](https://www.backblaze.com/cloud-storage/resources/hard-drive-test-data),
 `data_Q1_2024` through `data_Q1_2026`, into `data/zips`. The ingest processes one
-quarter at a time and deletes its scratch files, so peak disk use stays near 4 GB
-even though the archives expand to about 12 GB each.
+quarter at a time and extracts only ten daily files at a time, deleting each batch
+before the next, so the full 12 GB expansion of an archive is never on disk at
+once.
 
 ```
 py scripts\s0_ingest.py         --zips data/zips --out data/parquet
