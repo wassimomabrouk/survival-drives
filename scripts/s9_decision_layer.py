@@ -185,18 +185,21 @@ def plot_value_vs_cost_ratio(best: pd.DataFrame, path: Path,
     lo = min(risk_y) - 30
     hi = max(age_y) + 8
     ax.axhspan(lo, 0, color=navy, alpha=0.08, lw=0)
-    ax.axhline(0.0, color="#555555", lw=1.2, ls=":")
-    ax.plot(K_GRID, age_y, "--", marker="o", ms=6, lw=2, color=rust,
-            label="alternative: replace on age (best age threshold)")
+    h_rtf = ax.axhline(0.0, color="#555555", lw=1.2, ls=":",
+                       label="never replacing early (run to failure)")
+    h_age, = ax.plot(K_GRID, age_y, "--", marker="o", ms=6, lw=2, color=rust,
+                     label="alternative: replace on age (best age threshold)")
+    handles_mid = []
     if best_b1 is not None:
         sub = best_b1[best_b1["policy"] == "risk-based"].set_index("k")
         b1_y = [float(sub.loc[k, "vs_run_to_failure_pct"]) for k in K_GRID]
-        ax.plot(K_GRID, b1_y, "-", marker="o", ms=5, lw=1.6, color="#8C8C8C",
-                label="same policy, risk from drive model and age only (no SMART)")
+        h_b1, = ax.plot(K_GRID, b1_y, "-", marker="o", ms=5, lw=1.6, color="#8C8C8C",
+                        label="same policy, risk from drive model and age only (no SMART)")
+        handles_mid.append(h_b1)
         ax.text(5.4, -3.0, "grey, without SMART: no saving until 50x", fontsize=8.5,
                 color="#6E6E6E", ha="left", va="top")
-    ax.plot(K_GRID, risk_y, "-", marker="o", ms=7, lw=2.4, color=navy,
-            label="our policy: replace on predicted risk (best threshold)")
+    h_risk, = ax.plot(K_GRID, risk_y, "-", marker="o", ms=7, lw=2.4, color=navy,
+                      label="our policy: replace on predicted risk (best threshold)")
     years = age_thr[K_GRID.index(10)] / (24 * DAYS_PER_YEAR)
     n_age = int(best[best["policy"] == "age-based"]["replacements"].iloc[0])
     ax.annotate(f"best age rule: replace drives past {years:.1f} years;\n"
@@ -209,8 +212,6 @@ def plot_value_vs_cost_ratio(best: pd.DataFrame, path: Path,
         ax.annotate(f"{y:+.0f}%\nreplace above {100 * tau:.{1 if tau < 0.1 else 0}f}%",
                     (k, y), xytext=(0, -26), textcoords="offset points",
                     ha="center", va="top", fontsize=8.5, color=navy)
-    ax.text(1.0, 2.5, "never replacing early (run to failure)", fontsize=8.5,
-            color="#555555", va="bottom")
     ax.text(60, -9.0, "below the dotted line: cheaper than never replacing early", fontsize=8.5,
             color=navy, ha="right", va="top")
     ax.set_xscale("log")
@@ -224,7 +225,9 @@ def plot_value_vs_cost_ratio(best: pd.DataFrame, path: Path,
     ax.grid(alpha=0.2, lw=0.6)
     for side in ("top", "right"):
         ax.spines[side].set_visible(False)
-    ax.legend(fontsize=9, frameon=False, loc="upper right")
+    # Our policy first, so "same policy" below it has something to refer to.
+    ax.legend(handles=[h_risk, *handles_mid, h_age, h_rtf],
+              fontsize=9, frameon=False, loc="upper right")
     fig.tight_layout()
     fig.savefig(path, dpi=150)
     plt.close(fig)

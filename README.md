@@ -15,10 +15,10 @@ replacement policy below therefore relies on the ranking, not on the probabiliti
 
 ![What predictive replacement is worth](figures/s9_value_vs_cost_ratio.png)
 
-*Blue is the policy: each point is the saving at one cost ratio, labelled with the
+*Blue is our policy: each point is the saving at one cost ratio, labelled with the
 risk threshold that achieves it. Grey is the same policy fed a risk that knows only
-drive model and age, and red is the best that replacing on age can do. The blue
-numbers are also in the table below.*
+drive model and age, red is the best that replacing on age can do, and the dotted
+line is never replacing early. The blue numbers are also in the table below.*
 
 **The answer.** If an unplanned failure costs ten times as much as a planned
 replacement, replacing drives on predicted risk lowers the simulated fleet cost
@@ -31,11 +31,12 @@ at a time it is 8 to 19% at a cost ratio of 10, so the 25% is not a fixed rate.
 
 **The value comes from the telemetry.** To test this, the policy was run a second
 time with the SMART data taken out, so its risk score knew only each drive's model
-and age. Without SMART it saves nothing at any cost ratio up to 20, and 0.7% at 50,
-against 25% at 10 and 51% at 50 with it: the grey line in the figure, flat on zero
-(`reports/policy_b1/`). Replacing on age never pays at any cost ratio tested: the red
-line, always above zero. The least costly age rule replaces drives past 8.9 years of
-power-on time, 2,428 of them, none of which fails in the window.
+and age. Without SMART it saves nothing at any cost ratio up to 20: 0% at a cost
+ratio of 10, where our policy saves 25%, and 0.7% at 50, where ours saves 51%. That
+is the grey line in the figure, flat on zero (`reports/policy_b1/`). Replacing on
+age never pays at any cost ratio tested: the red line, always above zero. The least
+costly age rule replaces drives past 8.9 years of power-on time, 2,428 of them, none
+of which fails in the window.
 
 **When to replace a drive.** When its predicted risk of failing in the next 30 days
 rises above a threshold that depends on how expensive a failure is compared with a
