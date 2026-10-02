@@ -163,11 +163,67 @@ def cost_rate(res: dict, k: float) -> float:
     return (res["replacements"] + k * res["failures"]) / res["served_years"]
 
 
+def plot_value_vs_cost_ratio(best: pd.DataFrame, path: Path) -> None:
+    """The README's first figure: what each policy is worth at each cost ratio.
+
+    Each risk-based point is labelled with its saving and the threshold behind it,
+    so the figure and the README's when-to-replace table read as one thing.
+    Redrawn 2026-10-02 for readability; the numbers are unchanged.
+    """
+    navy, rust = "#1F3A5F", "#B3412C"
+
+    def series(pol):
+        sub = best[best["policy"] == pol].set_index("k")
+        return [float(sub.loc[k, "vs_run_to_failure_pct"]) for k in K_GRID], \
+               [float(sub.loc[k, "parameter"]) for k in K_GRID]
+
+    risk_y, risk_tau = series("risk-based")
+    age_y, _ = series("age-based")
+
+    fig, ax = plt.subplots(figsize=(9, 5.8))
+    lo = min(risk_y) - 30
+    hi = max(age_y) + 8
+    ax.axhspan(lo, 0, color=navy, alpha=0.05, lw=0)
+    ax.axhline(0.0, color="#555555", lw=1.2, ls=":")
+    ax.plot(K_GRID, age_y, "--", marker="o", ms=6, lw=2, color=rust,
+            label="replace on age (best age threshold)")
+    ax.plot(K_GRID, risk_y, "-", marker="o", ms=7, lw=2.4, color=navy,
+            label="replace on predicted risk (best risk threshold)")
+    for k, y, tau in zip(K_GRID, risk_y, risk_tau):
+        if k == 1:
+            continue
+        ax.annotate(f"{y:+.0f}%\nreplace above {100 * tau:.{1 if tau < 0.1 else 0}f}%",
+                    (k, y), xytext=(0, -26), textcoords="offset points",
+                    ha="center", va="top", fontsize=8.5, color=navy)
+    ax.text(1.0, 2.5, "never replacing early (run to failure)", fontsize=8.5,
+            color="#555555", va="bottom")
+    ax.text(60, -2.5, "shaded: cheaper than never replacing early", fontsize=8.5,
+            color=navy, ha="right", va="top")
+    ax.set_xscale("log")
+    ax.set_xticks(K_GRID)
+    ax.set_xticklabels([f"{k}x" for k in K_GRID])
+    ax.set_xlim(0.85, 65)
+    ax.set_ylim(lo, hi)
+    ax.set_xlabel("how much an unplanned failure costs, in planned replacements")
+    ax.set_ylabel("fleet cost compared with never replacing early (%)")
+    ax.set_title("What replacing drives on predicted risk is worth, three held-out quarters")
+    ax.grid(alpha=0.2, lw=0.6)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    ax.legend(fontsize=9, frameon=False, loc="upper right")
+    fig.tight_layout()
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--tables", default="data/tables")
     ap.add_argument("--reports", default="reports")
     ap.add_argument("--figures", default="figures")
+    ap.add_argument("--figure-only", action="store_true",
+                    help="redraw s9_value_vs_cost_ratio.png from the saved "
+                         "s9_best_policy_by_k.csv without rerunning the simulation")
     ap.add_argument("--risk-col", default="risk_m2",
                     help="which model's predictions to use; M2 is the best of the ladder")
     args = ap.parse_args()
@@ -175,6 +231,12 @@ def main() -> int:
     tables, reports, figures = Path(args.tables), Path(args.reports), Path(args.figures)
     reports.mkdir(parents=True, exist_ok=True)
     figures.mkdir(parents=True, exist_ok=True)
+
+    if args.figure_only:
+        best = pd.read_csv(reports / "s9_best_policy_by_k.csv")
+        plot_value_vs_cost_ratio(best, figures / "s9_value_vs_cost_ratio.png")
+        print(f"redrew {figures / 's9_value_vs_cost_ratio.png'}")
+        return 0
 
     path = tables / "predictions.parquet"
     if not path.exists():
@@ -344,27 +406,7 @@ def main() -> int:
     plt.close(fig)
 
     # 3. the actual headline: best achievable cost rate against the cost ratio
-    fig, ax = plt.subplots(figsize=(8.5, 5.4))
-    for pol, colour, style in (("risk-based", "#1F3A5F", "-"),
-                               ("age-based", "#B3412C", "--")):
-        ys = [best[(best["k"] == k) & (best["policy"] == pol)]["vs_run_to_failure_pct"].iloc[0]
-              for k in K_GRID]
-        ax.plot(K_GRID, ys, style, marker="o", ms=6, lw=2, color=colour,
-                label=f"{pol} (best threshold)")
-    ax.axhline(0.0, color="grey", lw=1.3, ls=":", label="run-to-failure")
-    ax.set_xscale("log")
-    ax.set_xticks(K_GRID)
-    ax.set_xticklabels([str(k) for k in K_GRID])
-    ax.set_xlabel("cost ratio k = cost of unplanned failure / cost of planned replacement")
-    ax.set_ylabel("change in fleet cost rate (%)")
-    ax.set_title("What predictive replacement is worth, as a function of the cost ratio")
-    ax.grid(alpha=0.25, lw=0.6)
-    ax.legend(fontsize=9, frameon=False, loc="lower left")
-    ax.text(0.98, 0.95, "negative is cheaper than running to failure",
-            transform=ax.transAxes, fontsize=8.5, color="#555555", ha="right")
-    fig.tight_layout()
-    fig.savefig(figures / "s9_value_vs_cost_ratio.png", dpi=150)
-    plt.close(fig)
+    plot_value_vs_cost_ratio(best, figures / "s9_value_vs_cost_ratio.png")
 
     # ------------------------------------------------------------------ headline
     print("\n================ headline ================")

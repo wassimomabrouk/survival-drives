@@ -15,13 +15,18 @@ replacement policy below therefore relies on the ranking, not on the probabiliti
 
 ![What predictive replacement is worth](figures/s9_value_vs_cost_ratio.png)
 
+*Each blue point is the saving at one cost ratio, labelled with the risk threshold
+that achieves it; the red line is the best that replacing on age can do. The same
+numbers are in the table below.*
+
 **The answer.** If an unplanned failure costs ten times as much as a planned
 replacement, replacing drives on predicted risk lowers the simulated fleet cost
 rate by 25% over the three held-out quarters; by 10% at a cost ratio of 5, 37% at
 20 and 51% at 50, and by under 1% at 2. These figures use the threshold that turned
-out best on those quarters. Choosing it in advance, on an earlier quarter, costs at
-most 1.7 percentage points. The saving also depends on how long the policy is
-simulated: one quarter at a time it is 8 to 19% at a cost ratio of 10.
+out best on those quarters. Choosing it in advance instead, on an earlier quarter,
+gives up at most 1.7 percentage points compared with hindsight over the same later
+quarters. The saving also depends on how long the policy is simulated: one quarter
+at a time it is 8 to 19% at a cost ratio of 10, so the 25% is not a fixed rate.
 
 **The value comes from the telemetry.** The same policy run on the drive-model-and-age
 model alone saves nothing up to a cost ratio of 20, and 0.7% at 50. Replacing on age
@@ -34,18 +39,19 @@ planned replacement:
 
 | a failure costs | replace when predicted 30-day risk exceeds | saving |
 |---|---|---|
-| 2 × a planned swap | about 40% | under 1%: run drives to failure |
+| 2 × a planned swap | about 40%, which almost no drive reaches | under 1%: in practice, run drives to failure |
 | 5 × | about 12% | 10% |
 | 10 × | about 4.5% | 25% |
 | 20 × | about 3.7% | 37% |
 | 50 × | about 0.8% | 51% |
 
 The more a failure costs, the earlier you act. What pushes a drive over the line is
-mostly a non-zero or rising pending sector count, then a rise in reallocated sectors;
-age does not. Two caveats: the thresholds are on the model's own scale, which runs
-about half as high again as true risk, so they are not true probabilities; and they
-were chosen in hindsight. Chosen in advance on an earlier quarter they are somewhat
-higher (about 20% at a cost ratio of 5, 7% at 10) and save up to 1.7 points less.
+mostly a non-zero or rising pending sector count, then a rise in reallocated sectors.
+Age and drive model set the baseline the score starts from, but on their own they
+never justify a replacement. Two caveats: the thresholds are on the model's own
+scale, which runs about half as high again as true risk, so they are not true
+probabilities; and they were chosen in hindsight. Chosen in advance on an earlier
+quarter they are somewhat higher (about 20% at a cost ratio of 5, 7% at 10).
 
 ---
 
