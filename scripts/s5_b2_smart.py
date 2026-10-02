@@ -28,8 +28,8 @@ Standard errors are clustered by spell. A spell contributes many correlated
 landmark rows, and naive standard errors would be far too small.
 
 Cohort A per DESIGN.md section 4: all four manufacturers, universal SMART
-attributes only, `TOSHIBA MG08ACA16TEY` excluded because it does not report
-attribute 197.
+attributes only, `TOSHIBA MG08ACA16TEY` and `TOSHIBA MG07ACA14TEY` excluded
+because neither reports attribute 197.
 
 Usage:
 
@@ -71,7 +71,9 @@ DELTA_COLS = [5, 12, 193, 197, 198]
 # shrunk toward zero.
 L2_GRID = [1e-4, 1e-3, 1e-2, 1e-1, 1.0, 10.0]
 
-EXCLUDE_MODELS = ("TOSHIBA MG08ACA16TEY",)
+# Both report zero coverage on attribute 197. The second was missed in section 0
+# and added on 2026-10-02; DESIGN.md section 13 logs it.
+EXCLUDE_MODELS = ("TOSHIBA MG08ACA16TEY", "TOSHIBA MG07ACA14TEY")
 
 
 def build_features(df: pd.DataFrame) -> tuple[np.ndarray, list[str]]:
@@ -81,24 +83,32 @@ def build_features(df: pd.DataFrame) -> tuple[np.ndarray, list[str]]:
     and a raw scale would let a handful of extreme drives dominate the fit. Only
     increases in the 30 day change are kept: a counter going down is a firmware
     quirk rather than a drive deteriorating.
+
+    Written column by column into one preallocated array rather than built as a
+    list and stacked. At seventeen million landmark rows the list plus the stack
+    were two full copies of the matrix alive at once, and the design construction,
+    not the fitting, was the memory peak.
     """
-    cols, names = [], []
+    names = ([f"log1p_smart_{n}" for n in COUNT_COLS]
+             + [f"smart_{n}" for n in LEVEL_COLS]
+             + [f"log1p_rise_smart_{n}" for n in DELTA_COLS])
+    X = np.empty((len(df), len(names)))
+    j = 0
 
     for n in COUNT_COLS:
-        cols.append(np.log1p(np.maximum(df[f"smart_{n}"].fillna(0).to_numpy(float), 0)))
-        names.append(f"log1p_smart_{n}")
+        np.log1p(np.maximum(df[f"smart_{n}"].fillna(0).to_numpy(float), 0), out=X[:, j])
+        j += 1
 
     for n in LEVEL_COLS:
         v = df[f"smart_{n}"].to_numpy(float)
-        cols.append(np.nan_to_num(v, nan=float(np.nanmedian(v))))
-        names.append(f"smart_{n}")
+        X[:, j] = np.nan_to_num(v, nan=float(np.nanmedian(v)))
+        j += 1
 
     for n in DELTA_COLS:
         d = df[f"d30_smart_{n}"].fillna(0).to_numpy(float)
-        cols.append(np.log1p(np.maximum(d, 0)))
-        names.append(f"log1p_rise_smart_{n}")
+        np.log1p(np.maximum(d, 0), out=X[:, j])
+        j += 1
 
-    X = np.column_stack(cols)
     return X, names
 
 
@@ -142,18 +152,44 @@ def drop_redundant(X: np.ndarray, names: list[str], keep=None, tol: float = 1e-6
 
 
 def standardise(X: np.ndarray, mu=None, sd=None):
+    """Standardise in place and prepend an intercept column.
+
+    One allocation, the returned matrix, instead of the three the obvious form
+    makes: `(X - mu) / sd` builds a copy and `column_stack` builds another. `X` is
+    modified, which is safe because every caller discards it immediately after.
+    """
     if mu is None:
         mu, sd = X.mean(axis=0), X.std(axis=0)
         sd = np.where(sd < 1e-12, 1.0, sd)
-    return (X - mu) / sd, mu, sd
+    np.subtract(X, mu, out=X)
+    np.divide(X, sd, out=X)
+    return X, mu, sd
+
+
+# Rows per chunk in the accumulators below, picked so the largest temporary stays
+# near 250 MB whatever the row count. The design matrix for twenty quarters is
+# tens of millions of rows, and a single unchunked `X * mu[:, None]` would
+# allocate a full second copy of it.
+def _chunk_rows(p: int, target_bytes: float = 2.5e8) -> int:
+    return max(100_000, int(target_bytes / (max(p, 1) * 8)))
 
 
 def _penalised_loglik(X, y, offset, beta, lam):
-    """Poisson log likelihood minus an L2 penalty. The intercept is not penalised."""
-    eta = X @ beta
-    if not np.all(np.isfinite(eta)) or np.max(eta) > 30:
-        return -np.inf
-    return float(np.sum(y * eta - offset * np.exp(eta)) - lam * np.sum(beta[1:] ** 2))
+    """Poisson log likelihood minus an L2 penalty. The intercept is not penalised.
+
+    Accumulated in chunks: the line search calls this up to forty times per Newton
+    step, and at tens of millions of rows a full-length eta each time is wasteful.
+    """
+    n, p = X.shape
+    step = _chunk_rows(p)
+    total = 0.0
+    for lo in range(0, n, step):
+        hi = min(lo + step, n)
+        eta = X[lo:hi] @ beta
+        if not np.all(np.isfinite(eta)) or (len(eta) and np.max(eta) > 30):
+            return -np.inf
+        total += float(np.sum(y[lo:hi] * eta - offset[lo:hi] * np.exp(eta)))
+    return total - lam * float(np.sum(beta[1:] ** 2))
 
 
 def fit_poisson_offset(X: np.ndarray, y: np.ndarray, offset: np.ndarray,
@@ -185,13 +221,21 @@ def fit_poisson_offset(X: np.ndarray, y: np.ndarray, offset: np.ndarray,
     beta = np.zeros(p)
     ll = _penalised_loglik(X, y, offset, beta, lam)
 
+    step_rows = _chunk_rows(p)
     for it in range(max_iter):
-        eta = X @ beta
-        mu = offset * np.exp(eta)
-        grad = X.T @ (y - mu)
+        # Gradient and Hessian accumulated chunk by chunk. Mathematically
+        # identical to X'(y - mu) and X' diag(mu) X computed in one shot, but
+        # without materialising a second copy of the design matrix.
+        grad = np.zeros(p)
+        H = np.zeros((p, p))
+        for lo in range(0, n, step_rows):
+            hi = min(lo + step_rows, n)
+            Xc = X[lo:hi]
+            muc = offset[lo:hi] * np.exp(Xc @ beta)
+            grad += Xc.T @ (y[lo:hi] - muc)
+            H += Xc.T @ (Xc * muc[:, None])
         grad[1:] -= 2.0 * lam * beta[1:]
 
-        H = X.T @ (X * mu[:, None])
         H[np.diag_indices_from(H)] += 2.0 * lam
         H[0, 0] -= 2.0 * lam          # intercept is unpenalised
         try:
@@ -228,14 +272,29 @@ def clustered_se(X: np.ndarray, y: np.ndarray, offset: np.ndarray,
     standard errors would be far too small and every coefficient would look
     significant.
     """
-    eta = np.clip(X @ beta, -30, 30)
-    mu = offset * np.exp(eta)
-    bread = np.linalg.pinv(X.T @ (X * mu[:, None]))
+    n, p = X.shape
+    step_rows = _chunk_rows(p)
 
-    resid = (y - mu)[:, None] * X
+    # Bread, accumulated in chunks for the same reason as the Hessian above.
+    bread_inner = np.zeros((p, p))
+    mu = np.empty(n)
+    for lo in range(0, n, step_rows):
+        hi = min(lo + step_rows, n)
+        Xc = X[lo:hi]
+        muc = offset[lo:hi] * np.exp(np.clip(Xc @ beta, -30, 30))
+        mu[lo:hi] = muc
+        bread_inner += Xc.T @ (Xc * muc[:, None])
+    bread = np.linalg.pinv(bread_inner)
+
+    # Meat: per-cluster sums of the score contributions. One bincount per column
+    # rather than np.add.at over an (n, p) residual matrix, which would both
+    # allocate a second copy of X and run unbuffered.
     uniq, inverse = np.unique(clusters, return_inverse=True)
-    summed = np.zeros((len(uniq), X.shape[1]))
-    np.add.at(summed, inverse, resid)
+    resid = y - mu
+    summed = np.empty((len(uniq), p))
+    for j in range(p):
+        summed[:, j] = np.bincount(inverse, weights=resid * X[:, j],
+                                   minlength=len(uniq))
     meat = summed.T @ summed
 
     cov = bread @ meat @ bread
@@ -311,7 +370,10 @@ def main() -> int:
             for nm, why in dropped:
                 print(f"    dropping {nm}: {why}")
         Xs, mu, sd = standardise(Xr, mu, sd)
-        X = np.column_stack([np.ones(len(Xs)), Xs])
+        X = np.empty((len(Xs), Xs.shape[1] + 1))
+        X[:, 0] = 1.0
+        X[:, 1:] = Xs
+        del Xs, Xr
         off = (np.maximum(b1["h_b1"].to_numpy(float), 1e-12)
                * np.maximum(df["expo"].to_numpy(float), 1e-6))
         return X, off, df["fail"].to_numpy(float), names, mu, sd, keep

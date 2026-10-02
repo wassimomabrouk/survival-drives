@@ -79,21 +79,32 @@ ARMS = {
 
 
 def build_features(df: pd.DataFrame, extra_count, extra_level, extra_delta):
-    """Design matrix for one arm. Same transforms as B2, plus the arm's extras."""
-    cols, names = [], []
-    for n in U_COUNT + list(extra_count):
-        cols.append(np.log1p(np.maximum(df[f"smart_{n}"].fillna(0).to_numpy(float), 0)))
-        names.append(f"log1p_smart_{n}")
-    for n in U_LEVEL + list(extra_level):
+    """Design matrix for one arm. Same transforms as B2, plus the arm's extras.
+
+    Preallocated and written column by column, for the memory reason documented
+    on the B2 version of this function.
+    """
+    counts = U_COUNT + list(extra_count)
+    levels = U_LEVEL + list(extra_level)
+    deltas = U_DELTA + list(extra_delta)
+    names = ([f"log1p_smart_{n}" for n in counts]
+             + [f"smart_{n}" for n in levels]
+             + [f"log1p_rise_smart_{n}" for n in deltas])
+    X = np.empty((len(df), len(names)))
+    j = 0
+    for n in counts:
+        np.log1p(np.maximum(df[f"smart_{n}"].fillna(0).to_numpy(float), 0), out=X[:, j])
+        j += 1
+    for n in levels:
         v = df[f"smart_{n}"].to_numpy(float)
         med = float(np.nanmedian(v)) if np.any(np.isfinite(v)) else 0.0
-        cols.append(np.nan_to_num(v, nan=med))
-        names.append(f"smart_{n}")
-    for n in U_DELTA + list(extra_delta):
+        X[:, j] = np.nan_to_num(v, nan=med)
+        j += 1
+    for n in deltas:
         d = df[f"d30_smart_{n}"].fillna(0).to_numpy(float)
-        cols.append(np.log1p(np.maximum(d, 0)))
-        names.append(f"log1p_rise_smart_{n}")
-    return np.column_stack(cols), names
+        np.log1p(np.maximum(d, 0), out=X[:, j])
+        j += 1
+    return X, names
 
 
 def load_window(con, lo: str | None, hi: str, smart_cols: list[str]) -> pd.DataFrame:
@@ -123,7 +134,10 @@ def design(df, b1, arm, mu=None, sd=None, keep=None, verbose=False):
         for nm, why in dropped:
             print(f"    {arm}: dropping {nm}, {why}")
     Xs, mu, sd = standardise(Xr, mu, sd)
-    X = np.column_stack([np.ones(len(Xs)), Xs])
+    X = np.empty((len(Xs), Xs.shape[1] + 1))
+    X[:, 0] = 1.0
+    X[:, 1:] = Xs
+    del Xs, Xr
     off = (np.maximum(b1["h_b1"].to_numpy(float), 1e-12)
            * np.maximum(df["expo"].to_numpy(float), 1e-6))
     return X, off, df["fail"].to_numpy(float), names, mu, sd, keep

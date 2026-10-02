@@ -81,6 +81,26 @@ def offsets(df: pd.DataFrame, b1: pd.DataFrame) -> np.ndarray:
             * np.maximum(df["expo"].to_numpy(float), 1e-6))
 
 
+def with_intercept(X: np.ndarray, names: list[str]) -> tuple[np.ndarray, list[str]]:
+    """Prepend a constant column, so B2 here is the same model as in s5_b2_smart.
+
+    Without this the Poisson fit below has no intercept and cannot shift its
+    overall hazard level relative to the B1 offset, while the boosted trees learn
+    a constant freely. That asymmetry does not touch AUC, since a constant shift
+    in log hazard cannot reorder anything, but it does flatter M2 on the Brier
+    score: part of the gain would be M2 correcting a level that B2 was not allowed
+    to correct. E4 compares functional forms, so the two models must differ only
+    in form.
+
+    The same matrix goes to XGBoost. A constant feature yields zero gain and is
+    never split on, so it costs one column of memory and changes nothing.
+    """
+    Z = np.empty((len(X), X.shape[1] + 1))
+    Z[:, 0] = 1.0
+    Z[:, 1:] = X
+    return Z, ["intercept"] + names
+
+
 def to_dmatrix(X: np.ndarray, y: np.ndarray, off: np.ndarray, names: list[str]):
     d = xgb.DMatrix(X, label=y, feature_names=names)
     # base_margin enters on the log scale before any tree, so the ensemble learns
@@ -143,9 +163,12 @@ def main() -> int:
         Xi_raw, raw_names = build_features(inner)
         Xi_raw, names, keep, _ = drop_redundant(Xi_raw, raw_names)
         Xi, mu, sd = standardise(Xi_raw)
+        Xi, names = with_intercept(Xi, names)
         oi, yi = offsets(inner, fit_predict(inner, inner)), inner["fail"].to_numpy(float)
 
-        Xv = standardise(drop_redundant(build_features(val)[0], raw_names, keep)[0], mu, sd)[0]
+        Xv = standardise(drop_redundant(build_features(val)[0], raw_names, keep)[0],
+                         mu, sd)[0]
+        Xv = with_intercept(Xv, names[1:])[0]
         ov, yv = offsets(val, fit_predict(inner, val)), val["fail"].to_numpy(float)
 
         # Hyperparameters on the validation quarter, from a model that has not
@@ -172,8 +195,12 @@ def main() -> int:
 
         # Refit both models on the full training window.
         b1_train, b1_test = fit_predict(train, train), fit_predict(train, test)
-        Xtr = standardise(drop_redundant(build_features(train)[0], raw_names, keep)[0], mu, sd)[0]
-        Xte = standardise(drop_redundant(build_features(test)[0], raw_names, keep)[0], mu, sd)[0]
+        Xtr = with_intercept(
+            standardise(drop_redundant(build_features(train)[0], raw_names, keep)[0],
+                        mu, sd)[0], names[1:])[0]
+        Xte = with_intercept(
+            standardise(drop_redundant(build_features(test)[0], raw_names, keep)[0],
+                        mu, sd)[0], names[1:])[0]
         off_tr, y_tr = offsets(train, b1_train), train["fail"].to_numpy(float)
         off_te = offsets(test, b1_test)
 

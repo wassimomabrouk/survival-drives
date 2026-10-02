@@ -76,9 +76,10 @@ confirming it is a firmware property rather than a data quality issue.
 | 241, 242 LBAs written and read | 1.00 | 0.16 | 0.05 | 0.09 |
 
 Attributes 187, 188, 190, 241 and 242 exist only on Seagate. The Toshiba figure
-of 0.94 on attribute 197 is entirely attributable to one model,
-`TOSHIBA MG08ACA16TEY`, which reports zero coverage on 197 while every other
-model in the fleet reports full coverage.
+of 0.94 on attribute 197 is attributable to two models, `TOSHIBA MG08ACA16TEY`
+and the much smaller `TOSHIBA MG07ACA14TEY`, which report zero coverage on 197
+while every other model in the fleet reports full coverage. The second was missed
+when this section was first written and found on 2026-10-02 (section 13).
 
 This constraint is not a defect. It supplies the project's second research
 question (section 1).
@@ -197,7 +198,9 @@ residual ambiguity is stated as limitation 2 rather than modelled away.
 **Cohort A, universal.** All four manufacturers. Features: SMART 5, 12, 193, 194,
 197, 198, plus capacity, plus drive model as a stratum. `TOSHIBA MG08ACA16TEY` is
 excluded because it does not report attribute 197, costing 5,276 drives and 408
-events out of 9,716.
+events out of 9,716 on the original window. `TOSHIBA MG07ACA14TEY` is excluded
+for the same reason from 2026-10-02 (section 13); in the raw data, 2021 Q1 to
+2026 Q1, it is 1,051 drives and 58 recorded failures.
 
 That exclusion is deliberate. Backblaze's canonical predictive set is attributes
 5, 187, 188, 197 and 198, of which only 5, 197 and 198 exist fleet-wide. Dropping
@@ -621,40 +624,95 @@ uninterpretable.
 E4 previously referenced M1 and carried no decision criterion. It now applies the
 same paired-bootstrap test as E2 and E3, fixed before M2 was fitted.
 
+**2026-10-02, section 13a added, expectations re-tested on a twenty-one quarter
+window.** Drafted while s5, s6 and s8 were running on the extended data and before
+any of their output was read; committed after the s5 E2 verdict had appeared on
+screen. The window grew from nine quarters to twenty-one; the test quarters, the
+expectations, their criteria and the evaluation code are all unchanged. Because
+the 9-quarter verdicts were already known when the extension was decided, the
+second run is recorded as a re-test rather than a pre-commitment, both sets of
+verdicts will be reported, and the window will not be extended again in search of
+a different answer. The reasons for extending it were the three limitations it
+addresses, all of which were measured before any model was refitted.
+
+**2026-10-02, second Toshiba model excluded from Cohort A; section 13a
+corrected.** At the time: B0 through B3 refitted on the 21-quarter window, with
+the s5 and s6 output read, including the E2 and E3 verdicts. M2 not refitted; its
+run was stopped during the first fold, before producing any output.
+
+`TOSHIBA MG07ACA14TEY` reports zero coverage on attribute 197 throughout the data,
+2021 Q1 to 2026 Q1: 1,051 drives and 58 recorded failures in the raw data. This
+is the defect that excluded `TOSHIBA MG08ACA16TEY` in section 4, and it is
+excluded for the same reason. It was present in the original nine-quarter window
+as well and was missed in section 0, which attributed the Toshiba gap on 197 to a
+single model. The 9-quarter B2 and M2 results therefore include it. They are not
+refitted: section 13a commits to reporting them as they were, and the model's
+size in that window is given in section 14.
+
+The reason is a property of the data, not of any result, and the exclusion would
+be made whatever E2 had shown. No criterion in section 9 changes.
+
+Expected effect, written before the refit. The model is about 0.3% of events.
+
+- E2 will not flip. Its Brier difference interval before the fix,
+  [+4.92e-06, +3.41e-05], sits clear of zero relative to its own width.
+- E1, E3 and E5 are unaffected by construction. E1 and E5 use no SMART features,
+  and E3's cohort is Seagate only.
+- E4 has no pre-fix 21-quarter value, since M2 was stopped before producing one.
+  Its 21-quarter verdict is a re-test in the sense of section 13a.
+
+For comparison with the refit, the pre-fix s5 output on 21 quarters was: E2 AUC
+difference +0.20044 [+0.18836, +0.21167], Brier difference +1.848e-05
+[+4.921e-06, +3.412e-05], calibration decile spread 0.418 for B1 against 0.388
+for B2, and B2 beats B1 on Brier at oracle level.
+
+Section 13a's opening statement is corrected in the same commit. It said the
+section preceded every 21-quarter result; it was drafted before any output was
+read but committed after the E2 verdict had appeared on screen. It also gave the
+windows as eight and twenty quarters. They are nine (2024 Q1 to 2026 Q1) and
+twenty-one (2021 Q1 to 2026 Q1), confirmed by counting distinct quarters in the
+ingested data. The original wording remains in commit 24949d2.
+
 ---
 
 ## 13a. Status of the expectations after the window extension
 
-**Written while the 20-quarter model scripts were running, before any of their
-output had been read.** It cannot claim to precede the run, which had already
-started; it does precede the results.
+**Drafted while the 21-quarter model scripts were running, before any of their
+output had been read. Committed after the first 21-quarter verdict (E2, from s5)
+had appeared on screen, and before any other 21-quarter result.** It cannot claim
+to precede the run, which had already started, or the E2 verdict. None of the
+commitments below depend on that verdict, and they would read the same had it
+passed. (Corrected 2026-10-02; the first version claimed to precede every result,
+see section 13.)
 
-The observation window was extended from eight quarters (2024 Q1 to 2026 Q1) to
-twenty (2021 Q1 to 2026 Q1). Nothing else changed: the three rolling-origin test
-quarters are the same, the expectations in section 9 are the same, their criteria
-are the same, and the code that evaluates them is the same. Only the training
-windows grew, from six to nine quarters to seventeen to twenty.
+The observation window was extended from nine quarters (2024 Q1 to 2026 Q1) to
+twenty-one (2021 Q1 to 2026 Q1). Nothing else changed: the three rolling-origin
+test quarters are the same, the expectations in section 9 are the same, their
+criteria are the same, and the code that evaluates them is the same. Only the
+training windows grew, from six to eight quarters to eighteen to twenty.
 
 **The second run is a re-test, not a fresh pre-commitment, and is reported as
 one.** The 8-quarter verdicts were already known when the window was extended:
 E1 held, E2 failed, E3 held on its primary criterion with its directional half
-wrong, E4 held, E5 held once specified correctly. Re-running the same
+wrong, E4 held, E5 held once specified correctly. (These are the 9-quarter
+verdicts.) Re-running the same
 expectations with that knowledge is not the same epistemic act as declaring them
 blind, however unchanged the criteria.
 
 Three commitments follow, made here rather than after the fact:
 
-1. **Both sets of verdicts are reported**, 8-quarter and 20-quarter, side by side
+1. **Both sets of verdicts are reported**, 9-quarter and 21-quarter, side by side
    in section 14. Neither replaces the other.
 2. **A verdict that flips is reported as a flip**, with both values, and is not
    presented as "the" result. In particular, if E2 now passes, the README still
    records that it failed on the original window and explains what changed.
 3. **The window is not extended again** in pursuit of a different verdict. If a
-   result is unstable between eight and twenty quarters, that instability is the
+   result is unstable between nine and twenty-one quarters, that instability is the
    finding and gets stated as such.
 
 The reason for extending the window is recorded in the amendment log and was
-decided before any 20-quarter model was fitted: it removes limitation 7 entirely,
+decided before any 21-quarter model was fitted: it reduces the fold imbalance in
+limitation 7 from six quarters against eight to eighteen against twenty, roughly
 halves the left truncation from 84.9% to 52.1%, and halves the share of events no
 landmark can see from 7.4% to 3.3%. None of those are about moving a verdict.
 
@@ -728,14 +786,3 @@ fleet simulation. Remaining: this README.
 Removed from Phase 1 during the work, each with a logged reason: Fine-Gray (no
 observed cause-of-exit label in the data) and M1 (could not be fitted on the same
 rows as the rest of the ladder).
-
-**2026-10-02, section 13a added, expectations re-tested on a twenty quarter
-window.** Written while s5, s6 and s8 were running on the extended data and
-before any of their output was read. The window grew from eight quarters to
-twenty; the test quarters, the expectations, their criteria and the evaluation
-code are all unchanged. Because the 8-quarter verdicts were already known when
-the extension was decided, the second run is recorded as a re-test rather than a
-pre-commitment, both sets of verdicts will be reported, and the window will not
-be extended again in search of a different answer. The reasons for extending it
-were the three limitations it fixes, all of which were measured before any model
-was refitted.
