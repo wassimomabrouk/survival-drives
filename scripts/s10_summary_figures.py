@@ -73,11 +73,15 @@ def figure_ladder(df: pd.DataFrame, reports: Path, figures: Path, n_boot: int) -
     b2p = b2p[b2p["metric"] == "ipcw_auc"].iloc[0]
     m2p = pd.read_csv(reports / "m2_paired_comparison.csv")
     m2p = m2p[(m2p["metric"] == "ipcw_auc") & (m2p["level"] == "raw")].iloc[0]
+    # s5 and s8 each refit B1 and B2, so their predictions agree only to floating
+    # point noise, around 1e-7 in AUC. A row mismatch would show in the third
+    # decimal, so 1e-5 separates the two cases with a wide margin either side.
     for name, got, want in (("B2 minus B1", auc[2] - auc[1], b2p["difference"]),
                             ("M2 minus B2", auc[3] - auc[2], m2p["difference"])):
-        if abs(got - want) > 1e-9:
-            raise SystemExit(f"{name}: {got:.6f} here against {want:.6f} in reports/, "
-                             "so the rows differ. Rerun s5 and s8 before this.")
+        print(f"  {name}: {got:.9f} here, {want:.9f} in reports/")
+        if abs(got - want) > 1e-5:
+            raise SystemExit(f"{name} differs by {abs(got - want):.2e}, so the rows "
+                             "differ. Rerun s5 and s8 before this.")
     print(f"  bootstrapping the B1 minus B0 step on these rows, {n_boot} resamples")
     s10 = ev.bootstrap_paired_difference(df, "risk_b0", "risk_b1", "ipcw_auc",
                                          n_boot=n_boot)
