@@ -498,7 +498,7 @@ materially it is given in brackets.
 9. 627 of 18,738 events (3.3%) fall into no landmark window and are invisible to every model (726 of 9,790, 7.4%, on nine quarters). Composition, measured in `scripts/s1b_coverage_audit.py`: 151 failed before the first landmark, burn-in from the 30 day change feature that costs training data only; 258 had a spell shorter than the landmark step, a median of under one day, giving a landmark model no history to predict from; 211 were excluded by the staleness rule; 7 entered after the last landmark. In the three test quarters the uncovered share is 4.1%, 6.9% and 12.3%, 238 events in all, of which 180 are assigned to the staleness rule, 51 to short spells and 7 to late entry (`s1b_coverage_reason_by_quarter.csv`). The nine-quarter version attributed the 2026 Q1 figure to fleet growth and infant mortality without measuring it; measured, it is mostly the staleness rule. That category is the audit's residual, assigned when no other cause fits, and why it concentrates in 2026 Q1 was not determined. These exclusions are common to every model, so the comparison between models is unaffected, but reported performance is conditional on a drive being scorable at all. In particular **the model does not address infant mortality**: drives failing within days of installation are structurally outside a landmark framework, and no claim is made about them.
 10. E5. On nine quarters the pooled comparison failed at age 2 by 0.23 pp, and matching on drive model and installation vintage resolved it (0.98583 against 0.98622 for the 2024 vintage). On twenty-one quarters the pooled model-matched comparison fails at age 2 by 0.16 pp, and the like-for-like comparison within installation year, run under a rule fixed beforehand (section 13), fails 6 of 20 times: at every age for 2020, where delayed entry sits 0.21 to 0.43 pp above the incident arm, and at 1.5 and 2 years for 2022, where it sits 0.18 and 0.55 pp below. The 2020 comparison is not like for like at monthly resolution, since the only 2020 drives that count as incident are those installed in roughly the last month of 2020; that is a design flaw in the test, found after the result. The 2022 gap is unexplained. The delayed-entry survival curves are therefore not validated for those two vintages. The landmark models do not depend on them.
 11. **The models over-predict the overall failure rate.** On the held-out rows the observed 30-day risk is about 0.00092; B1 predicts 0.00112, B2 0.00134 and M2 0.00138. The decision layer is built to tolerate a level error (section 10), but the probabilities should not be read as calibrated rates.
-12. **Savings depend on the simulated period.** A replacement is credited with any failure the drive would have had later in the simulated window, not only within the 30-day horizon. Measured in `s11b_window_check.py`: at k = 10 the hindsight-best saving is 5.2 to 18.5% over a single quarter, 15.4 and 20.2% over the two adjacent pairs, and 25.1% over all three. Adding a quarter raises the saving at every k from 5 up, and among equal-length windows the one with more failures saves more. Savings are therefore quoted with the period they were measured over.
+12. **Savings depend on the simulated period.** A replacement is credited with any failure the drive would have had later in the simulated window, not only within the 30-day horizon. Measured in `s11b_window_check.py`: at k = 10 the hindsight-best saving is 7.5 to 18.7% over a single quarter, 15.9 and 20.9% over the two adjacent pairs, and 25.1% over all three. From k = 10 up, adding a quarter to any window always raises the saving; at k = 5 it does in every case but one. 2025 Q3, the quarter with the most failures, saves the most on its own, but the other two single quarters do not consistently follow their failure rates. The saving keeps rising with every quarter added and no stable long-run value has been shown, so savings are quoted with the period they were measured over.
 13. **The simulator removes a replaced drive and does not model its replacement.** The replacement drive's own failure risk and its added service time are both omitted. At k = 10 the policy removes about 1% of drive-years, so the effect is likely small. The first README and the s9 docstring claimed the omission favours aggressive policies and that any advantage was therefore understated; those two statements contradict each other, and the direction of the effect was never measured.
 
 ---
@@ -876,6 +876,23 @@ Predictions, written before the reruns:
   comparably, the claim that the value comes from SMART telemetry is wrong, and the
   README will say so.
 
+Outcomes, read after the reruns:
+
+- At k = 10 and k = 50 the savings are unchanged (25.1% and 50.5%), and at k = 20
+  they rose from 37.0% to 37.3%, under one point as predicted.
+- At k = 5 the three-quarter saving rose from 8.3% to 10.0%, at k = 2 from 0.3% to
+  0.8%, and single-quarter savings at k = 5 are now 1.7 to 7.8% rather than 0.0 to
+  0.9%. The earlier claim that the k = 5 saving appears only over three quarters was
+  an artefact of the grid, as the review suspected.
+- s11's optimism rose from 0.46 to 1.71 percentage points, at k = 5, below the
+  5-point threshold. The headline stays the hindsight figure, with the prospective
+  one beside it.
+- The B1 policy finds no threshold that beats running to failure at any k up to 20,
+  and saves 0.7% at k = 50. The claim stands, now with evidence.
+- One statement in the previous entry no longer holds on the finer grid: among
+  single quarters, 2025 Q4 saves more than 2026 Q1 at k = 5, 10 and 20 despite its
+  lower failure rate. Limitation 12 is rewritten accordingly.
+
 Wording findings, corrected without rerunning anything: E2 was not in the README's
 first paragraph as section 9 requires; the headline savings did not say their
 threshold is chosen in hindsight; "calibration did not degrade" judged spread and
@@ -946,7 +963,7 @@ figures are as recorded at the time and are not recomputed.
 | | expectation | 9 quarters | 21 quarters |
 |---|---|---|---|
 | **E1** | B1 beats B0 modestly | **held.** AUC +0.0667 [+0.0580, +0.0775], Brier -5.63e-07 [-6.47e-07, -4.98e-07]. | **held.** AUC +0.0503 [+0.0402, +0.0626], Brier -2.89e-07 [-3.59e-07, -2.31e-07], whole fleet as specified. On the Cohort A rows used for the ladder, +0.039 [+0.029, +0.048]. |
-| **E2** | B2 beats B1 | **failed.** AUC +0.1873 [+0.1760, +0.1994]; Brier +6.1e-06, interval spanning zero; calibration recorded as degraded, 0.312 to 0.460, but B1's figure came from different rows (section 13), so that leg is not reliable. | **failed.** AUC +0.2007 [+0.1896, +0.2101]; Brier +1.86e-05 [+7.09e-06, +3.08e-05], reliably worse; calibration on identical rows not degraded, 0.494 to 0.375. At oracle level the Brier difference is -7.8e-06 [-1.59e-05, +1.25e-07], so the loss is level error. |
+| **E2** | B2 beats B1 | **failed.** AUC +0.1873 [+0.1760, +0.1994]; Brier +6.1e-06, interval spanning zero; calibration recorded as degraded, 0.312 to 0.460, but B1's figure came from different rows (section 13), so that leg is not reliable. | **failed.** AUC +0.2007 [+0.1896, +0.2101]; Brier +1.86e-05 [+7.09e-06, +3.08e-05], reliably worse; calibration on identical rows depends on the reading: the decile spread narrowed, 0.494 to 0.375, while the level worsened, every B2 decile ratio lying below 1 where B1's straddle it; the criterion does not say which governs, and E2 fails on Brier regardless. At oracle level the Brier difference is -7.8e-06 [-1.59e-05, +1.25e-07], so the Brier loss is level error. |
 | **E3** | B3 beats B2 on the Seagate cohort; 187 carries most of the gain, the other four contribute little | **held on the primary criterion, directional claim half wrong.** AUC +0.0248 [+0.0183, +0.0337]; Brier improved raw and at oracle level. 187 carries 72.2%; the other four add +0.0069 [+0.0039, +0.0117]. | **held on the primary criterion, directional claim half wrong.** AUC +0.0203 [+0.0144, +0.0280]; Brier not distinguishable from zero raw or at oracle level. 187 carries 87.8%; the other four add +0.0025 [+0.00005, +0.0053]. |
 | **E4** | M2 beats B2 by a small margin and is no better calibrated | **held, one part wrong in the favourable direction.** AUC +0.0287 [+0.0243, +0.0322]; Brier improved raw and at oracle level; calibration came out better, 0.486 to 0.461. | **held as written.** AUC +0.0247 [+0.0215, +0.0283]; Brier -3.87e-05 [-4.84e-05, -2.66e-05] raw and -2.67e-05 [-3.41e-05, -1.89e-05] at oracle level; calibration no better, 0.375 to 0.387. |
 | **E5** | the delayed-entry estimate agrees with an untruncated cohort, like for like | **held once compared like for like.** The pooled comparison failed at age 2 by 0.23 pp; matched on model and vintage, 0.98583 against 0.98622. | **failed.** Within installation year, under a rule fixed beforehand, 6 of 20 comparisons fall outside the incident band: all four ages for 2020 (delayed entry 0.21 to 0.43 pp higher) and 1.5 and 2 years for 2022 (0.18 and 0.55 pp lower). The 2020 test is not like for like at monthly resolution, a design flaw found after the result; the 2022 gap is unexplained (section 12, limitation 10). |
@@ -979,16 +996,17 @@ collinear with 194 to four decimal places; the nine-quarter text called 190 an e
 duplicate, which on twenty-one quarters it is not quite, since it survives the
 exact-duplicate check.
 
-**RQ3, the decision.** Over the three held-out quarters, risk-based replacement
-lowers the fleet cost rate by 8.3% at k = 5, 25.1% at k = 10, 37.0% at k = 20 and
-50.5% at k = 50 (9.3%, 24.7% and 50.6% at 5, 10 and 50 on nine quarters), with
-break-even near k = 2. The result is stable under the fleet hazard level coming in
-20% either way. A threshold chosen on 2025 Q3 and applied to the next two quarters
-costs at most 0.46 percentage points against hindsight. The size of the saving
-depends on the simulated period (section 12, limitation 12): at k = 10 it is 5 to
-18% over any single quarter and 25% over three, and at k = 5 it appears only over
-the full three quarters. Age-based replacement never pays at any cost ratio tested,
-on either window.
+**RQ3, the decision.** Over the three held-out quarters, with the threshold chosen
+in hindsight, risk-based replacement lowers the simulated fleet cost rate by 0.8% at
+k = 2, 10.0% at k = 5, 25.1% at k = 10, 37.3% at k = 20 and 50.5% at k = 50 (9.3%,
+24.7% and 50.6% at 5, 10 and 50 on nine quarters, on the coarser grid). The result
+moves by under half a percentage point when the fleet hazard level comes in 20%
+either way. A threshold chosen on 2025 Q3 and applied to the next two quarters costs
+at most 1.71 percentage points against hindsight, at k = 5. The size of the saving
+depends on the simulated period (section 12, limitation 12): at k = 10 it is 7.5 to
+18.7% over any single quarter and 25.1% over three. The same policy on B1's
+predictions, drive model and age only, beats running to failure only at k = 50, by
+0.7%. Age-based replacement never pays at any cost ratio tested, on either window.
 
 ### Measured quantities
 
@@ -1008,7 +1026,8 @@ on either window.
 
 Complete: ingest pipeline, survival tables, informative-censoring test,
 delayed-entry validation, B0 through B3, M2, evaluation suite, decision layer, fleet
-simulation, prospective and window checks on the policy, and the README.
+simulation, prospective and window checks on the policy, the same policy on drive
+model and age alone, and the README.
 
 Removed from Phase 1 during the work, each with a logged reason: Fine-Gray (no
 observed cause-of-exit label in the data) and M1 (could not be fitted on the same

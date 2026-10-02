@@ -1,6 +1,6 @@
 manufacturer,n_drives,n_failures,afr_pct
-Seagate,130894,4075.0,1.68
-Toshiba,120175,2633.0,1.2
-HGST,41075,2082.0,2.94
-WDC,87326,926.0,0.64
-Other,8,0.0,0.0
+Seagate,165336,10324.0,1.83
+Toshiba,121686,4098.0,1.11
+HGST,46415,3088.0,1.56
+WDC,96439,1076.0,0.54
+Other,13,1.0,4.09

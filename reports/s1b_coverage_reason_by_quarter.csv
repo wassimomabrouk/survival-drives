@@ -1,0 +1,38 @@
+quarter,reason,events
+2021-01-01,1. failed before the first landmark,151
+2021-01-01,4. whole spell fell between two landmarks,6
+2021-04-01,4. whole spell fell between two landmarks,8
+2021-04-01,5. excluded by the staleness rule,1
+2021-07-01,4. whole spell fell between two landmarks,17
+2021-10-01,4. whole spell fell between two landmarks,10
+2021-10-01,5. excluded by the staleness rule,4
+2022-01-01,4. whole spell fell between two landmarks,33
+2022-04-01,4. whole spell fell between two landmarks,8
+2022-07-01,4. whole spell fell between two landmarks,9
+2022-07-01,5. excluded by the staleness rule,1
+2022-10-01,4. whole spell fell between two landmarks,4
+2022-10-01,5. excluded by the staleness rule,2
+2023-01-01,4. whole spell fell between two landmarks,1
+2023-01-01,5. excluded by the staleness rule,1
+2023-04-01,4. whole spell fell between two landmarks,3
+2023-07-01,4. whole spell fell between two landmarks,8
+2023-07-01,5. excluded by the staleness rule,1
+2023-10-01,4. whole spell fell between two landmarks,5
+2024-01-01,4. whole spell fell between two landmarks,18
+2024-04-01,4. whole spell fell between two landmarks,36
+2024-04-01,5. excluded by the staleness rule,13
+2024-07-01,4. whole spell fell between two landmarks,16
+2024-07-01,5. excluded by the staleness rule,1
+2024-10-01,4. whole spell fell between two landmarks,9
+2024-10-01,5. excluded by the staleness rule,3
+2025-01-01,4. whole spell fell between two landmarks,6
+2025-01-01,5. excluded by the staleness rule,1
+2025-04-01,4. whole spell fell between two landmarks,10
+2025-04-01,5. excluded by the staleness rule,3
+2025-07-01,4. whole spell fell between two landmarks,14
+2025-07-01,5. excluded by the staleness rule,37
+2025-10-01,4. whole spell fell between two landmarks,25
+2025-10-01,5. excluded by the staleness rule,39
+2026-01-01,3. entered after the last landmark,7
+2026-01-01,4. whole spell fell between two landmarks,12
+2026-01-01,5. excluded by the staleness rule,104

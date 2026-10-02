@@ -1,3 +1,3 @@
 comparison,metric,difference,lo,hi,excludes_zero
-"B2 minus B1, both at oracle level",ipcw_auc,0.18727869101885664,0.17602053594467873,0.19943054010080538,True
-"B2 minus B1, both at oracle level",ipcw_brier,-1.2172634559078966e-05,-2.2603315965368124e-05,-2.533366593968035e-06,True
+"B2 minus B1, both at oracle level",ipcw_auc,0.2007084496471463,0.18960505437571798,0.2100957887814247,True
+"B2 minus B1, both at oracle level",ipcw_brier,-7.789573154472359e-06,-1.5852765216218332e-05,1.250893439660755e-07,False
