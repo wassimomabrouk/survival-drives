@@ -183,7 +183,7 @@ def plot_value_vs_cost_ratio(best: pd.DataFrame, path: Path) -> None:
     fig, ax = plt.subplots(figsize=(9, 5.8))
     lo = min(risk_y) - 30
     hi = max(age_y) + 8
-    ax.axhspan(lo, 0, color=navy, alpha=0.05, lw=0)
+    ax.axhspan(lo, 0, color=navy, alpha=0.08, lw=0)
     ax.axhline(0.0, color="#555555", lw=1.2, ls=":")
     ax.plot(K_GRID, age_y, "--", marker="o", ms=6, lw=2, color=rust,
             label="replace on age (best age threshold)")
@@ -197,7 +197,7 @@ def plot_value_vs_cost_ratio(best: pd.DataFrame, path: Path) -> None:
                     ha="center", va="top", fontsize=8.5, color=navy)
     ax.text(1.0, 2.5, "never replacing early (run to failure)", fontsize=8.5,
             color="#555555", va="bottom")
-    ax.text(60, -2.5, "shaded: cheaper than never replacing early", fontsize=8.5,
+    ax.text(60, -2.5, "below the dotted line: cheaper than never replacing early", fontsize=8.5,
             color=navy, ha="right", va="top")
     ax.set_xscale("log")
     ax.set_xticks(K_GRID)
