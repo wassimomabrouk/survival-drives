@@ -623,6 +623,43 @@ same paired-bootstrap test as E2 and E3, fixed before M2 was fitted.
 
 ---
 
+## 13a. Status of the expectations after the window extension
+
+**Written while the 20-quarter model scripts were running, before any of their
+output had been read.** It cannot claim to precede the run, which had already
+started; it does precede the results.
+
+The observation window was extended from eight quarters (2024 Q1 to 2026 Q1) to
+twenty (2021 Q1 to 2026 Q1). Nothing else changed: the three rolling-origin test
+quarters are the same, the expectations in section 9 are the same, their criteria
+are the same, and the code that evaluates them is the same. Only the training
+windows grew, from six to nine quarters to seventeen to twenty.
+
+**The second run is a re-test, not a fresh pre-commitment, and is reported as
+one.** The 8-quarter verdicts were already known when the window was extended:
+E1 held, E2 failed, E3 held on its primary criterion with its directional half
+wrong, E4 held, E5 held once specified correctly. Re-running the same
+expectations with that knowledge is not the same epistemic act as declaring them
+blind, however unchanged the criteria.
+
+Three commitments follow, made here rather than after the fact:
+
+1. **Both sets of verdicts are reported**, 8-quarter and 20-quarter, side by side
+   in section 14. Neither replaces the other.
+2. **A verdict that flips is reported as a flip**, with both values, and is not
+   presented as "the" result. In particular, if E2 now passes, the README still
+   records that it failed on the original window and explains what changed.
+3. **The window is not extended again** in pursuit of a different verdict. If a
+   result is unstable between eight and twenty quarters, that instability is the
+   finding and gets stated as such.
+
+The reason for extending the window is recorded in the amendment log and was
+decided before any 20-quarter model was fitted: it removes limitation 7 entirely,
+halves the left truncation from 84.9% to 52.1%, and halves the share of events no
+landmark can see from 7.4% to 3.3%. None of those are about moving a verdict.
+
+---
+
 ## 14. Results against the pre-commitments
 
 Every expectation in section 9 was fixed and committed to git before the model it
@@ -691,3 +728,14 @@ fleet simulation. Remaining: this README.
 Removed from Phase 1 during the work, each with a logged reason: Fine-Gray (no
 observed cause-of-exit label in the data) and M1 (could not be fitted on the same
 rows as the rest of the ladder).
+
+**2026-10-02, section 13a added, expectations re-tested on a twenty quarter
+window.** Written while s5, s6 and s8 were running on the extended data and
+before any of their output was read. The window grew from eight quarters to
+twenty; the test quarters, the expectations, their criteria and the evaluation
+code are all unchanged. Because the 8-quarter verdicts were already known when
+the extension was decided, the second run is recorded as a re-test rather than a
+pre-commitment, both sets of verdicts will be reported, and the window will not
+be extended again in search of a different answer. The reasons for extending it
+were the three limitations it fixes, all of which were measured before any model
+was refitted.
