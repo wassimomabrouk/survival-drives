@@ -26,6 +26,16 @@ If survival at age 2 varies by vintage, and the 2024 vintage matches the inciden
 arm, the gap is a cohort effect rather than a truncation error and delayed entry
 is working correctly.
 
+**On the 21-quarter window (2021 Q1 to 2026 Q1) the paragraph above no longer
+holds.** Incident drives reaching age 2 now come from installation years 2020 to
+2024, so the incident arm is no longer one vintage and the single-vintage match is
+not available. The like-for-like comparison section 9 specifies, same drive models
+and same installation vintage, is therefore made directly: within each
+installation year, the delayed-entry estimate on all of that year's spells is
+compared with an estimate on that year's incident spells only. Added 2026-10-02,
+after the 21-quarter s3 and s3b output had been read; DESIGN.md section 13 logs
+it and fixes the decision rule before it ran.
+
 Usage:
 
     py scripts/s3b_vintage_check.py --tables data/tables --reports reports
@@ -47,6 +57,9 @@ from s3_b0_baseline import HOURS_PER_YEAR, km_delayed_entry  # noqa: E402
 INCIDENT_MAX_ENTRY_HOURS = 720
 MIN_VINTAGE_SPELLS = 2000
 TEST_AGES = (0.5, 1.0, 1.5, 2.0)
+# A within-vintage comparison is made only where the incident arm still has this
+# many drives at risk, so that its confidence band is not too wide to fail.
+MIN_INCIDENT_AT_RISK = 1000
 
 
 def main() -> int:
@@ -160,8 +173,69 @@ def main() -> int:
             print(f"\nat age 2: incident arm {inc2:.5f}, vintages range "
                   f"{spread.min():.5f} to {spread.max():.5f}, "
                   f"spread {100 * (spread.max() - spread.min()):.3f} pp")
-            print("Compare that spread against the 0.230 pp gap B0 reported. A spread of")
-            print("similar size or larger means vintage alone can account for the gap.")
+            gap_path = reports / "b0_e5_model_matched.csv"
+            if gap_path.exists():
+                g = pd.read_csv(gap_path)
+                g2 = g.loc[np.isclose(g["age_years"], 2.0), "gap_pp"]
+                if len(g2):
+                    print(f"Compare that spread against the {abs(float(g2.iloc[0])):.3f} pp "
+                          f"gap B0 reported at age 2. A spread of")
+                    print("similar size or larger means vintage alone can account for the gap.")
+
+    # ------------------------------------------------- like for like, per vintage
+    # Section 9's E5 criterion: the delayed-entry estimate and an incident-only
+    # estimate agree within confidence intervals when restricted to the same drive
+    # models and the same installation vintage.
+    like = []
+    for vy in vintages:
+        base = f"model IN ({lst}) AND YEAR(install_year) = {vy}"
+        n_all, n_inc = con.execute(
+            f"""SELECT COUNT(*), SUM(CASE WHEN poh_entry <= {INCIDENT_MAX_ENTRY_HOURS}
+                                       THEN 1 ELSE 0 END)
+                FROM cohort WHERE {base}"""
+        ).fetchone()
+        if not n_inc:
+            continue
+        full_v = km_delayed_entry(con, base)
+        inc_v = km_delayed_entry(con, f"{base} AND poh_entry <= {INCIDENT_MAX_ENTRY_HOURS}")
+        if full_v.empty or inc_v.empty:
+            continue
+        for a in TEST_AGES:
+            t = a * HOURS_PER_YEAR
+            if t > inc_v["t"].max() or t > full_v["t"].max():
+                continue
+            at_risk = int(inc_v.loc[inc_v["t"] <= t, "n_at_risk"].iloc[-1]) \
+                if (inc_v["t"] <= t).any() else int(inc_v["n_at_risk"].iloc[0])
+            if at_risk < MIN_INCIDENT_AT_RISK:
+                continue
+            sf = float(np.interp(t, full_v["t"], full_v["survival"]))
+            si = float(np.interp(t, inc_v["t"], inc_v["survival"]))
+            lo = float(np.interp(t, inc_v["t"], inc_v["survival_lo"]))
+            hi = float(np.interp(t, inc_v["t"], inc_v["survival_hi"]))
+            like.append({
+                "install_year": vy, "age_years": a,
+                "spells": int(n_all), "incident_share": round(n_inc / n_all, 3),
+                "incident_at_risk": at_risk,
+                "survival_delayed_entry": sf, "survival_incident": si,
+                "incident_ci_lo": lo, "incident_ci_hi": hi,
+                "gap_pp": 100 * (sf - si),
+                "inside_incident_ci": bool(lo <= sf <= hi),
+            })
+
+    lk = pd.DataFrame(like)
+    lk.to_csv(reports / "s3b_e5_like_for_like.csv", index=False)
+    print("\n--- s3b_e5_like_for_like ---")
+    print("Within each installation year: delayed-entry estimate on all spells")
+    print("against an estimate on that year's incident spells only.")
+    if lk.empty:
+        print("no vintage had enough incident drives at risk to compare")
+    else:
+        with pd.option_context("display.width", 220, "display.float_format", "{:.5f}".format):
+            print(lk.to_string(index=False))
+        miss = lk[~lk["inside_incident_ci"]]
+        print(f"\n{len(lk)} comparisons, {len(miss)} outside the incident band")
+        print("E5 on this window: " + ("HOLDS" if miss.empty else "FAILS")
+              + " (rule fixed in DESIGN.md section 13 before this ran)")
 
     con.close()
     print(f"\nwritten to {reports.resolve()}")

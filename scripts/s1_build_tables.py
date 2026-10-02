@@ -423,7 +423,8 @@ def reconcile(con, reports: Path) -> None:
         """,
         "s1_spells_by_manufacturer",
         reports,
-        "Ties back to Section 0: Seagate 4075, Toshiba 2633, HGST 2082, WDC 926.",
+        "Compare with reports/q2_events_by_manufacturer.csv from Section 0. Small "
+        "differences come from boot drives and spell splitting.",
     )
 
 

@@ -267,9 +267,10 @@ def main() -> int:
 
     # Persist the held-out predictions so the decision layer consumes them rather
     # than refitting every model. These are test rows only: each was scored by a
-    # model trained strictly before its quarter.
+    # model trained strictly before its quarter. risk_b0 is kept so the summary
+    # model ladder can score all four models on identical rows (added 2026-10-02).
     keep_cols = ["spell_key", "model", "landmark", "poh_at_landmark", "t_days",
-                 "status", "fail", "expo", "risk_b1", "risk_b2", "risk_m2"]
+                 "status", "fail", "expo", "risk_b0", "risk_b1", "risk_b2", "risk_m2"]
     preds = all_test[[c for c in keep_cols if c in all_test.columns]].copy()
     pred_path = tables / "predictions.parquet"
     preds.to_parquet(pred_path, index=False)

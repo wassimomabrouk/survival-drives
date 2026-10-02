@@ -2,11 +2,18 @@
 
 Three figures that no single modelling script owns, because each spans several of
 them. All are built from committed outputs rather than by refitting anything, so
-this runs in seconds and cannot silently disagree with the numbers already in
-`reports/`.
+this cannot silently disagree with the numbers already in `reports/`. It takes a
+few minutes, almost all of it one spell-level bootstrap (see below).
 
   1. model ladder      discrimination across B0, B1, B2 and M2, the results-at-a-
-                       glance figure a reader wants before any detail
+                       glance figure a reader wants before any detail. All four
+                       are scored on the identical held-out rows in
+                       predictions.parquet, and each step carries its paired
+                       interval rather than marginal ones, since the paired
+                       difference is the comparison actually being made. The
+                       B2 and M2 steps are read from s5 and s8; the B1 minus B0
+                       step is bootstrapped here, because s4 tests it on the whole
+                       fleet rather than on these rows.
   2. calibration       B1, B2 and M2 on identical rows. Calibration is a
                        pre-committed constraint in DESIGN.md section 8, so the
                        models that matter need to appear in it, not only the
@@ -26,7 +33,6 @@ import sys
 from pathlib import Path
 
 import matplotlib
-import numpy as np
 import pandas as pd
 
 matplotlib.use("Agg")
@@ -40,57 +46,90 @@ RUST = "#B3412C"
 GREY = "#7A7A7A"
 
 
-def figure_ladder(reports: Path, figures: Path) -> None:
-    """Discrimination across the ladder, with the B3 arm shown separately."""
-    pooled = pd.read_csv(reports / "b1_metrics_pooled.csv")
-    b0 = float(pooled.loc[pooled["model"] == "B0 age only", "ipcw_auc"].iloc[0])
-    b0_lo = float(pooled.loc[pooled["model"] == "B0 age only", "auc_lo"].iloc[0])
-    b0_hi = float(pooled.loc[pooled["model"] == "B0 age only", "auc_hi"].iloc[0])
-    b1 = float(pooled.loc[pooled["model"] == "B1 model and age", "ipcw_auc"].iloc[0])
-    b1_lo = float(pooled.loc[pooled["model"] == "B1 model and age", "auc_lo"].iloc[0])
-    b1_hi = float(pooled.loc[pooled["model"] == "B1 model and age", "auc_hi"].iloc[0])
+def figure_ladder(df: pd.DataFrame, reports: Path, figures: Path, n_boot: int) -> None:
+    """Discrimination across the ladder, every model on the identical held-out rows.
 
-    m2f = pd.read_csv(reports / "m2_metrics_by_fold.csv")
-    # Pooling by event count, since folds differ in size.
-    def pooled_auc(label):
-        sub = m2f[m2f["model"] == label]
-        return float(np.average(sub["ipcw_auc"], weights=sub["n_events"]))
-    b2, m2 = pooled_auc("B2 log-linear"), pooled_auc("M2 boosted trees")
+    An earlier version took B0 and B1 from s4, which scores the whole fleet, and
+    B2 and M2 from s8, which scores Cohort A, and averaged B2 and M2 across folds.
+    The rungs were on different rows and the step from B1 to B2 did not match the
+    E2 difference. Corrected 2026-10-02 (DESIGN.md section 13).
+    """
+    labels = ["B0 age only", "B1 model and age", "B2 plus SMART", "M2 boosted trees"]
+    cols = ["risk_b0", "risk_b1", "risk_b2", "risk_m2"]
+    rows = []
+    for lab, col in zip(labels, cols):
+        m = ev.evaluate(df, col)
+        m["model"] = lab
+        rows.append(m)
+    lad = pd.DataFrame(rows)[["model", "n_rows", "n_events", "mean_predicted",
+                              "ipcw_brier", "ipcw_auc"]]
+    lad.to_csv(reports / "summary_model_ladder.csv", index=False)
+    auc = lad["ipcw_auc"].to_numpy()
 
-    labels = ["B0\nage only", "B1\n+ drive model", "B2\n+ SMART", "M2\n+ boosted trees"]
-    vals = [b0, b1, b2, m2]
-    errs = [[b0 - b0_lo, b1 - b1_lo, 0, 0], [b0_hi - b0, b1_hi - b1, 0, 0]]
+    # Paired step intervals. B2-B1 and M2-B2 come from the scripts that tested
+    # them on these same rows; their point estimates must match what is computed
+    # here, and a mismatch means the rows differ.
+    b2p = pd.read_csv(reports / "b2_paired_comparison.csv")
+    b2p = b2p[b2p["metric"] == "ipcw_auc"].iloc[0]
+    m2p = pd.read_csv(reports / "m2_paired_comparison.csv")
+    m2p = m2p[(m2p["metric"] == "ipcw_auc") & (m2p["level"] == "raw")].iloc[0]
+    for name, got, want in (("B2 minus B1", auc[2] - auc[1], b2p["difference"]),
+                            ("M2 minus B2", auc[3] - auc[2], m2p["difference"])):
+        if abs(got - want) > 1e-9:
+            raise SystemExit(f"{name}: {got:.6f} here against {want:.6f} in reports/, "
+                             "so the rows differ. Rerun s5 and s8 before this.")
+    print(f"  bootstrapping the B1 minus B0 step on these rows, {n_boot} resamples")
+    s10 = ev.bootstrap_paired_difference(df, "risk_b0", "risk_b1", "ipcw_auc",
+                                         n_boot=n_boot)
+    steps = pd.DataFrame([
+        {"step": "B1 minus B0", "difference": s10["difference"],
+         "lo": s10["lo"], "hi": s10["hi"], "source": "s10, on these rows"},
+        {"step": "B2 minus B1", "difference": b2p["difference"],
+         "lo": b2p["lo"], "hi": b2p["hi"], "source": "s5 b2_paired_comparison"},
+        {"step": "M2 minus B2", "difference": m2p["difference"],
+         "lo": m2p["lo"], "hi": m2p["hi"], "source": "s8 m2_paired_comparison"},
+    ])
+    steps.to_csv(reports / "summary_ladder_steps.csv", index=False)
+
+    ticks = ["B0\nage only", "B1\n+ drive model", "B2\n+ SMART", "M2\n+ boosted trees"]
     colours = [GREY, GREY, NAVY, NAVY]
-
-    fig, ax = plt.subplots(figsize=(8.5, 5.4))
-    bars = ax.bar(labels, vals, color=colours, width=0.62)
-    ax.errorbar(range(4), vals, yerr=errs, fmt="none", ecolor="#333333",
-                capsize=4, lw=1.2)
-    for b, v in zip(bars, vals):
+    fig, ax = plt.subplots(figsize=(8.5, 5.6))
+    bars = ax.bar(ticks, auc, color=colours, width=0.6)
+    for b, v in zip(bars, auc):
         ax.text(b.get_x() + b.get_width() / 2, v + 0.006, f"{v:.3f}",
-                ha="center", fontsize=10.5, fontweight="bold")
-    ax.set_ylim(0.55, 0.93)
+                ha="center", fontsize=10.5, fontweight="bold", color="#222222")
+    # Step labels sit between the bars they compare, above the taller of the two.
+    for i, r in steps.reset_index(drop=True).iterrows():
+        x = i + 0.5
+        y = max(auc[i], auc[i + 1]) + 0.045
+        ax.text(x, y, f"{r['difference']:+.3f}\n[{r['lo']:+.3f}, {r['hi']:+.3f}]",
+                ha="center", fontsize=8.5, color="#444444")
+    ax.set_ylim(0.5, 0.97)
     ax.set_ylabel("IPCW time-dependent AUC (0.5 would be chance)")
-    ax.set_title("Discrimination across the model ladder")
+    ax.set_title("Discrimination across the model ladder, identical held-out rows")
     ax.grid(alpha=0.25, lw=0.6, axis="y")
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
     fig.text(0.5, 0.015,
-             "the jump from B1 to B2 is SMART telemetry; everything after it is "
-             "functional form",
+             "between the bars: the paired AUC gain and its spell-level 95% interval",
              fontsize=8.5, color="#555555", ha="center")
     fig.tight_layout(rect=(0, 0.035, 1, 1))
     fig.savefig(figures / "summary_model_ladder.png", dpi=150)
     plt.close(fig)
-    print(f"  model ladder: B0 {b0:.3f}, B1 {b1:.3f}, B2 {b2:.3f}, M2 {m2:.3f}")
+    print("  model ladder: " + ", ".join(f"{l.split()[0]} {v:.3f}"
+                                         for l, v in zip(labels, auc)))
+    for _, r in steps.iterrows():
+        print(f"  {r['step']}: {r['difference']:+.4f} [{r['lo']:+.4f}, {r['hi']:+.4f}]")
 
 
-def figure_calibration(tables: Path, figures: Path) -> None:
+def figure_calibration(df: pd.DataFrame, reports: Path, figures: Path) -> None:
     """B1, B2 and M2 calibration on identical held-out rows."""
-    df = pd.read_parquet(tables / "predictions.parquet")
     t = df["t_days"].to_numpy(float)
     s = df["status"].to_numpy(int)
 
     fig, ax = plt.subplots(figsize=(6.8, 6.4))
     lim = 0.0
+    tables_out, spreads = [], []
     for label, col, colour, style in (("B1, drive model and age", "risk_b1", GREY, "-"),
                                       ("B2, + SMART", "risk_b2", "#5B8FA8", "-"),
                                       ("M2, + boosted trees", "risk_m2", NAVY, "-")):
@@ -100,6 +139,13 @@ def figure_calibration(tables: Path, figures: Path) -> None:
         lim = max(lim, c["mean_predicted"].max(), c["observed_ipcw"].max())
         spread = c["ratio_obs_pred"].max() - c["ratio_obs_pred"].min()
         print(f"  {label}: decile spread {spread:.3f}")
+        tables_out.append(c.assign(model=label))
+        spreads.append({"model": label, "decile_spread": spread,
+                        "ratio_min": c["ratio_obs_pred"].min(),
+                        "ratio_max": c["ratio_obs_pred"].max()})
+    pd.concat(tables_out, ignore_index=True).to_csv(
+        reports / "summary_calibration_deciles.csv", index=False)
+    pd.DataFrame(spreads).to_csv(reports / "summary_calibration_spread.csv", index=False)
 
     # Log-log axes. Predicted risks span two orders of magnitude across the
     # deciles, and on a linear scale the eight lowest deciles of every model pile
@@ -169,12 +215,13 @@ def main() -> int:
     ap.add_argument("--tables", default="data/tables")
     ap.add_argument("--reports", default="reports")
     ap.add_argument("--figures", default="figures")
+    ap.add_argument("--n-boot", type=int, default=100)
     args = ap.parse_args()
 
     tables, reports, figures = Path(args.tables), Path(args.reports), Path(args.figures)
     figures.mkdir(parents=True, exist_ok=True)
 
-    needed = [reports / "b1_metrics_pooled.csv", reports / "m2_metrics_by_fold.csv",
+    needed = [reports / "b2_paired_comparison.csv", reports / "m2_paired_comparison.csv",
               reports / "b3_paired_comparisons.csv", tables / "predictions.parquet"]
     missing = [p for p in needed if not p.exists()]
     if missing:
@@ -183,10 +230,15 @@ def main() -> int:
             print(f"  {m}")
         return 1
 
+    df = pd.read_parquet(tables / "predictions.parquet")
+    if "risk_b0" not in df.columns:
+        print("predictions.parquet has no risk_b0 column; rerun s8_m2_boosted.py")
+        return 1
+
     print("model ladder")
-    figure_ladder(reports, figures)
+    figure_ladder(df, reports, figures, args.n_boot)
     print("calibration")
-    figure_calibration(tables, figures)
+    figure_calibration(df, reports, figures)
     print("RQ2 decomposition")
     figure_rq2(reports, figures)
 

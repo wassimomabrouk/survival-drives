@@ -664,7 +664,9 @@ Expected effect, written before the refit. The model is about 0.3% of events.
 For comparison with the refit, the pre-fix s5 output on 21 quarters was: E2 AUC
 difference +0.20044 [+0.18836, +0.21167], Brier difference +1.848e-05
 [+4.921e-06, +3.412e-05], calibration decile spread 0.418 for B1 against 0.388
-for B2, and B2 beats B1 on Brier at oracle level.
+for B2, and B2's Brier at oracle level below B1's as a point estimate (the
+script's "beats" flag; the interval was not recorded before the fix, and after
+it the interval includes zero, see the next entry).
 
 Section 13a's opening statement is corrected in the same commit. It said the
 section preceded every 21-quarter result; it was drafted before any output was
@@ -672,6 +674,60 @@ read but committed after the E2 verdict had appeared on screen. It also gave the
 windows as eight and twenty quarters. They are nine (2024 Q1 to 2026 Q1) and
 twenty-one (2021 Q1 to 2026 Q1), confirmed by counting distinct quarters in the
 ingested data. The original wording remains in commit 24949d2.
+
+**2026-10-02, four evaluation defects corrected and E5 made like for like.**
+At the time: every 21-quarter script, s0 through s11, had been run and its output
+read. Found while checking the output against the README, before any
+documentation was rewritten.
+
+1. **E2's calibration constraint compared spreads computed on different rows.**
+   s5 read B1's decile table from s4, which scores the whole fleet, while B2's is
+   scored on Cohort A. s5 now computes B1's table on its own rows. On identical
+   rows B1's spread is 0.494 (computed by s10), not 0.418; B2's is 0.375 either
+   way, so the constraint is met under both and no 21-quarter verdict depends on
+   it. The same mismatch was present on the 9-quarter run, where the calibration
+   leg was recorded as degraded. That cannot be recomputed on identical rows,
+   because the 9-quarter predictions were overwritten. The 9-quarter E2 verdict
+   does not depend on it, since Brier failed on its own.
+2. **The model ladder figure mixed row sets.** B0 and B1 came from s4 on the whole
+   fleet, B2 and M2 from s8 on Cohort A, averaged across folds, so the step from
+   B1 to B2 did not equal the E2 difference. s8 now also saves B0's predictions,
+   and s10 scores all four models on the identical held-out rows, with paired
+   intervals on each step. The 9-quarter README ladder (0.606, 0.672, 0.847,
+   0.874) had the same mismatch.
+3. **Uncovered events rise through the test quarters**, 4.1%, 6.9% and 12.3% of
+   events in 2025 Q3, 2025 Q4 and 2026 Q1. s1b now attributes them by cause and
+   quarter.
+4. **B2's oracle Brier advantage is a point estimate only.** The interval on B2
+   minus B1 at oracle level is [-1.59e-05, +1.25e-07], which includes zero. The
+   supportable statement is that B2's Brier loss disappears once level is
+   corrected, not that B2 then beats B1.
+
+**E5 made like for like.** On nine quarters the incident arm at age 2 was a single
+installation vintage, so the vintage check in s3b could match it directly. On
+twenty-one quarters incident drives reach age 2 from installation years 2020 to
+2024, and the model-matched comparison in s3, which falls 0.161 pp outside the
+incident band at age 2, is not the comparison section 9 specifies: same drive
+models **and** same installation vintage. s3b now makes that comparison within
+each installation year. The criterion in section 9 is unchanged; this implements
+it on a window where the earlier shortcut no longer applies.
+
+Decision rule, fixed here before the run. Within each installation year with at
+least 2,000 spells at risk at age 2, the delayed-entry estimate on all of that
+year's spells is compared with the estimate on its incident spells only, at ages
+0.5, 1.0, 1.5 and 2.0, wherever the incident arm still has at least 1,000 drives
+at risk. **E5 holds on this window if every compared delayed-entry estimate lies
+inside the incident arm's 95% band, and fails otherwise**, with the number and
+size of the misses reported. Two caveats are stated now rather than afterwards.
+With up to about twenty comparisons at 95%, roughly one miss is expected by chance
+even if delayed entry is correct; the rule is not relaxed for that, and a single
+miss is reported as a failure under the rule. And in a vintage where nearly every
+spell is incident the comparison is weak, so the incident share is reported for
+each.
+
+**Prediction for the rerun.** s5 and s8 are seeded. Every number they reported on
+2026-10-02 should reproduce exactly, except B1's calibration spread in the E2
+output. Any other change is a reproducibility defect and is reported as one.
 
 ---
 

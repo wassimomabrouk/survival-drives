@@ -516,11 +516,16 @@ def main() -> int:
     bri_r = next(p for p in pairs if p["metric"] == "ipcw_brier")
     auc_ok = auc_r["difference"] > 0 and auc_r["excludes_zero"]
     bri_ok = bri_r["difference"] < 0 and bri_r["excludes_zero"]
-    b1_cal = pd.read_csv(reports / "b1_calibration_b1.csv") \
-        if (reports / "b1_calibration_b1.csv").exists() else None
+    # B1's calibration is computed here, on the same Cohort A rows B2 is scored
+    # on. An earlier version read reports/b1_calibration_b1.csv instead, which s4
+    # computes on the whole fleet, so the two spreads came from different rows.
+    # Corrected 2026-10-02; DESIGN.md section 13 logs it.
+    b1_cal = ev.calibration_table(all_test["risk_b1"].to_numpy(),
+                                  all_test["t_days"].to_numpy(),
+                                  all_test["status"].to_numpy())
+    b1_cal.to_csv(reports / "b2_calibration_b1.csv", index=False)
     spread_b2 = cal["ratio_obs_pred"].max() - cal["ratio_obs_pred"].min()
-    spread_b1 = (b1_cal["ratio_obs_pred"].max() - b1_cal["ratio_obs_pred"].min()
-                 if b1_cal is not None else np.nan)
+    spread_b1 = b1_cal["ratio_obs_pred"].max() - b1_cal["ratio_obs_pred"].min()
 
     print("\n================ E2 verdict ================")
     print("Criterion locked in DESIGN.md section 9 before B2 was fitted:")

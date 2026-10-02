@@ -106,6 +106,42 @@ def main() -> int:
     with pd.option_context("display.width", 200):
         print(q.to_string(index=False))
 
+    # Which cause dominates in each quarter. Added 2026-10-02, when the
+    # 21-quarter run showed the uncovered share rising through the three test
+    # quarters; this attributes that rise rather than guessing at it.
+    rq = con.execute(
+        f"""
+        WITH covered AS (
+            SELECT DISTINCT spell_key FROM landmarks WHERE fail_{HORIZON_DAYS}d = 1
+        ), uncovered AS (
+            SELECT s.*
+            FROM spells s
+            LEFT JOIN covered c USING (spell_key)
+            WHERE s.event = 1 AND c.spell_key IS NULL
+        )
+        SELECT
+            DATE_TRUNC('quarter', exit_date) AS quarter,
+            CASE
+                WHEN exit_date < DATE '{lo}'
+                    THEN '1. failed before the first landmark'
+                WHEN exit_date > DATE '{hi}' + {HORIZON_DAYS}
+                    THEN '2. failed after the last landmark plus horizon'
+                WHEN entry_date > DATE '{hi}'
+                    THEN '3. entered after the last landmark'
+                WHEN DATE_DIFF('day', entry_date, exit_date) < {LANDMARK_STEP_DAYS}
+                    THEN '4. whole spell fell between two landmarks'
+                ELSE '5. excluded by the staleness rule'
+            END AS reason,
+            COUNT(*) AS events
+        FROM uncovered
+        GROUP BY 1, 2 ORDER BY 1, 2
+        """
+    ).df()
+    rq.to_csv(reports / "s1b_coverage_reason_by_quarter.csv", index=False)
+    print("\n--- uncovered events by quarter and cause ---")
+    with pd.option_context("display.width", 200):
+        print(rq.to_string(index=False))
+
     con.close()
     return 0
 
