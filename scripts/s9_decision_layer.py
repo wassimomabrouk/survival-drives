@@ -163,7 +163,8 @@ def cost_rate(res: dict, k: float) -> float:
     return (res["replacements"] + k * res["failures"]) / res["served_years"]
 
 
-def plot_value_vs_cost_ratio(best: pd.DataFrame, path: Path) -> None:
+def plot_value_vs_cost_ratio(best: pd.DataFrame, path: Path,
+                             best_b1: pd.DataFrame | None = None) -> None:
     """The README's first figure: what each policy is worth at each cost ratio.
 
     Each risk-based point is labelled with its saving and the threshold behind it,
@@ -178,7 +179,7 @@ def plot_value_vs_cost_ratio(best: pd.DataFrame, path: Path) -> None:
                [float(sub.loc[k, "parameter"]) for k in K_GRID]
 
     risk_y, risk_tau = series("risk-based")
-    age_y, _ = series("age-based")
+    age_y, age_thr = series("age-based")
 
     fig, ax = plt.subplots(figsize=(9, 5.8))
     lo = min(risk_y) - 30
@@ -186,9 +187,22 @@ def plot_value_vs_cost_ratio(best: pd.DataFrame, path: Path) -> None:
     ax.axhspan(lo, 0, color=navy, alpha=0.08, lw=0)
     ax.axhline(0.0, color="#555555", lw=1.2, ls=":")
     ax.plot(K_GRID, age_y, "--", marker="o", ms=6, lw=2, color=rust,
-            label="replace on age (best age threshold)")
+            label="alternative: replace on age (best age threshold)")
+    if best_b1 is not None:
+        sub = best_b1[best_b1["policy"] == "risk-based"].set_index("k")
+        b1_y = [float(sub.loc[k, "vs_run_to_failure_pct"]) for k in K_GRID]
+        ax.plot(K_GRID, b1_y, "-", marker="o", ms=5, lw=1.6, color="#8C8C8C",
+                label="same policy, risk from drive model and age only (no SMART)")
+        ax.text(5.4, -3.0, "grey, without SMART: no saving until 50x", fontsize=8.5,
+                color="#6E6E6E", ha="left", va="top")
     ax.plot(K_GRID, risk_y, "-", marker="o", ms=7, lw=2.4, color=navy,
-            label="replace on predicted risk (best risk threshold)")
+            label="our policy: replace on predicted risk (best threshold)")
+    years = age_thr[K_GRID.index(10)] / (24 * DAYS_PER_YEAR)
+    n_age = int(best[best["policy"] == "age-based"]["replacements"].iloc[0])
+    ax.annotate(f"best age rule: replace drives past {years:.1f} years;\n"
+                f"{n_age:,} replaced, none of which failed in the window",
+                (K_GRID[2], age_y[2]), xytext=(14, 14), textcoords="offset points",
+                fontsize=8.5, color=rust)
     for k, y, tau in zip(K_GRID, risk_y, risk_tau):
         if k == 1:
             continue
@@ -197,7 +211,7 @@ def plot_value_vs_cost_ratio(best: pd.DataFrame, path: Path) -> None:
                     ha="center", va="top", fontsize=8.5, color=navy)
     ax.text(1.0, 2.5, "never replacing early (run to failure)", fontsize=8.5,
             color="#555555", va="bottom")
-    ax.text(60, -2.5, "below the dotted line: cheaper than never replacing early", fontsize=8.5,
+    ax.text(60, -9.0, "below the dotted line: cheaper than never replacing early", fontsize=8.5,
             color=navy, ha="right", va="top")
     ax.set_xscale("log")
     ax.set_xticks(K_GRID)
@@ -232,9 +246,12 @@ def main() -> int:
     reports.mkdir(parents=True, exist_ok=True)
     figures.mkdir(parents=True, exist_ok=True)
 
+    b1_path = reports / "policy_b1" / "s9_best_policy_by_k.csv"
+    best_b1 = pd.read_csv(b1_path) if b1_path.exists() else None
+
     if args.figure_only:
         best = pd.read_csv(reports / "s9_best_policy_by_k.csv")
-        plot_value_vs_cost_ratio(best, figures / "s9_value_vs_cost_ratio.png")
+        plot_value_vs_cost_ratio(best, figures / "s9_value_vs_cost_ratio.png", best_b1)
         print(f"redrew {figures / 's9_value_vs_cost_ratio.png'}")
         return 0
 
@@ -406,7 +423,7 @@ def main() -> int:
     plt.close(fig)
 
     # 3. the actual headline: best achievable cost rate against the cost ratio
-    plot_value_vs_cost_ratio(best, figures / "s9_value_vs_cost_ratio.png")
+    plot_value_vs_cost_ratio(best, figures / "s9_value_vs_cost_ratio.png", best_b1)
 
     # ------------------------------------------------------------------ headline
     print("\n================ headline ================")

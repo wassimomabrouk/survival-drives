@@ -15,9 +15,10 @@ replacement policy below therefore relies on the ranking, not on the probabiliti
 
 ![What predictive replacement is worth](figures/s9_value_vs_cost_ratio.png)
 
-*Each blue point is the saving at one cost ratio, labelled with the risk threshold
-that achieves it; the red line is the best that replacing on age can do. The same
-numbers are in the table below.*
+*Blue is the policy: each point is the saving at one cost ratio, labelled with the
+risk threshold that achieves it. Grey is the same policy fed a risk that knows only
+drive model and age, and red is the best that replacing on age can do. The blue
+numbers are also in the table below.*
 
 **The answer.** If an unplanned failure costs ten times as much as a planned
 replacement, replacing drives on predicted risk lowers the simulated fleet cost
@@ -28,10 +29,13 @@ gives up at most 1.7 percentage points compared with hindsight over the same lat
 quarters. The saving also depends on how long the policy is simulated: one quarter
 at a time it is 8 to 19% at a cost ratio of 10, so the 25% is not a fixed rate.
 
-**The value comes from the telemetry.** The same policy run on the drive-model-and-age
-model alone saves nothing up to a cost ratio of 20, and 0.7% at 50. Replacing on age
-never pays at any cost ratio tested: the least costly age rule replaces the 2,428
-oldest drives, none of which fails in the window.
+**The value comes from the telemetry.** To test this, the policy was run a second
+time with the SMART data taken out, so its risk score knew only each drive's model
+and age. Without SMART it saves nothing at any cost ratio up to 20, and 0.7% at 50,
+against 25% at 10 and 51% at 50 with it: the grey line in the figure, flat on zero
+(`reports/policy_b1/`). Replacing on age never pays at any cost ratio tested: the red
+line, always above zero. The least costly age rule replaces drives past 8.9 years of
+power-on time, 2,428 of them, none of which fails in the window.
 
 **When to replace a drive.** When its predicted risk of failing in the next 30 days
 rises above a threshold that depends on how expensive a failure is compared with a
@@ -377,8 +381,8 @@ py scripts\s6_b3_seagate.py
 py scripts\s6b_design_check.py
 py scripts\s7_horizon_check.py
 py scripts\s8_m2_boosted.py       # writes the held-out predictions
-py scripts\s9_decision_layer.py   # requires s8
 py scripts\s9_decision_layer.py --risk-col risk_b1 --reports reports\policy_b1 --figures figures\policy_b1
+py scripts\s9_decision_layer.py   # the main policy; draws the grey line from the run above
 py scripts\s10_summary_figures.py
 py scripts\s11_prospective_policy.py
 py scripts\s11b_window_check.py
