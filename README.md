@@ -4,15 +4,14 @@
 
 Twenty-one quarters of Backblaze Drive Stats, 2021 Q1 to 2026 Q1, covering 429,870
 drives and 18,738 failures, framed as a survival analysis problem, turned into a
-replacement policy and evaluated against the alternatives on quarters the models
-never saw. **The test of the project's premise, fixed before the model existed,
-failed.** Expectation E2 required SMART telemetry to improve on drive model and age
-in both ranking and probability accuracy. It improves ranking by a wide margin (AUC
-+0.20) but not the Brier score: no better on the original nine quarters, and
-slightly but reliably worse on twenty-one. The loss disappears once each model's
-overall level is corrected, which locates the problem. The telemetry ranks drives
-well, and the probabilities it produces are pitched too high. The policy below is
-built on the ranking, not on the probabilities.
+replacement policy and evaluated on quarters the models never saw. **The project
+rests on one premise: that a drive's SMART health counters say more about whether it
+will fail than its model and age already do. The test of that premise was written
+down before the model existed, and it failed.** SMART telemetry is far better at
+ranking which drives will fail (AUC 0.65 to 0.85), but the failure probabilities it
+predicts are no more accurate, because they run about half as high again as the real
+rate. That held on the original nine quarters and again on twenty-one. The
+replacement policy below therefore relies on the ranking, not on the probabilities.
 
 ![What predictive replacement is worth](figures/s9_value_vs_cost_ratio.png)
 
@@ -28,6 +27,25 @@ simulated: one quarter at a time it is 8 to 19% at a cost ratio of 10.
 model alone saves nothing up to a cost ratio of 20, and 0.7% at 50. Replacing on age
 never pays at any cost ratio tested: the least costly age rule replaces the 2,428
 oldest drives, none of which fails in the window.
+
+**When to replace a drive.** When its predicted risk of failing in the next 30 days
+rises above a threshold that depends on how expensive a failure is compared with a
+planned replacement:
+
+| a failure costs | replace when predicted 30-day risk exceeds | saving |
+|---|---|---|
+| 2 × a planned swap | about 40% | under 1%: run drives to failure |
+| 5 × | about 12% | 10% |
+| 10 × | about 4.5% | 25% |
+| 20 × | about 3.7% | 37% |
+| 50 × | about 0.8% | 51% |
+
+The more a failure costs, the earlier you act. What pushes a drive over the line is
+mostly a non-zero or rising pending sector count, then a rise in reallocated sectors;
+age does not. Two caveats: the thresholds are on the model's own scale, which runs
+about half as high again as true risk, so they are not true probabilities; and they
+were chosen in hindsight. Chosen in advance on an earlier quarter they are somewhat
+higher (about 20% at a cost ratio of 5, 7% at 10) and save up to 1.7 points less.
 
 ---
 
