@@ -58,7 +58,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from s9_decision_layer import K_GRID, cost_rate, simulate  # noqa: E402
+from s9_decision_layer import K_GRID, cost_rate, simulate, threshold_grid  # noqa: E402
 
 NAVY = "#1F3A5F"
 RUST = "#B3412C"
@@ -75,28 +75,20 @@ def spell_bounds(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
     return starts, ends
 
 
-def best_tau(df: pd.DataFrame, risk_col: str, tau_grid: np.ndarray, k: float) -> float:
-    """The threshold minimising cost on this quarter, with its outcomes known."""
+def sweep(df: pd.DataFrame, risk_col: str, tau_grid: np.ndarray) -> list[dict]:
+    """One simulation per threshold on this window. The cost ratio only re-weights
+    the resulting counts, so every k reuses the same simulations."""
     risk = df[risk_col].to_numpy(float)
     t_days = df["t_days"].to_numpy(float)
     fail = df["fail"].to_numpy(int)
     starts, ends = spell_bounds(df)
-    best, best_cost = tau_grid[0], np.inf
-    for tau in tau_grid:
-        c = cost_rate(simulate(risk, risk > tau, t_days, fail, starts, ends), k)
-        if np.isfinite(c) and c < best_cost:
-            best, best_cost = float(tau), c
-    return best
+    return [simulate(risk, risk > tau, t_days, fail, starts, ends) for tau in tau_grid]
 
 
-def apply_tau(df: pd.DataFrame, risk_col: str, tau: float, k: float) -> dict:
-    """Run one fixed threshold over a quarter and report what it cost."""
-    risk = df[risk_col].to_numpy(float)
-    res = simulate(risk, risk > tau,
-                   df["t_days"].to_numpy(float), df["fail"].to_numpy(int),
-                   *spell_bounds(df))
-    res["cost_rate"] = cost_rate(res, k)
-    return res
+def best_index(sims: list[dict], k: float) -> int:
+    """The threshold minimising cost on a window whose outcomes are known."""
+    costs = np.array([cost_rate(r, k) for r in sims], dtype=float)
+    return int(np.nanargmin(costs))
 
 
 def main() -> int:
@@ -138,7 +130,7 @@ def main() -> int:
     # Same threshold grid as the headline analysis, built on all held-out rows so
     # the two are directly comparable.
     risk_all = df[args.risk_col].to_numpy(float)
-    tau_grid = np.unique(np.quantile(risk_all, np.linspace(0.90, 0.99999, 40)))
+    tau_grid = threshold_grid(risk_all)
 
     select_q = quarters[0]
     apply_q = quarters[1:]
@@ -160,15 +152,18 @@ def main() -> int:
                     apply_df["fail"].to_numpy(int),
                     *spell_bounds(apply_df))
 
+    sims_select = sweep(select_df, args.risk_col, tau_grid)
+    sims_apply = sweep(apply_df, args.risk_col, tau_grid)
+
     rows = []
     for k in K_GRID:
         rtf = cost_rate(base, k)
 
-        tau_p = best_tau(select_df, args.risk_col, tau_grid, k)
-        prosp = apply_tau(apply_df, args.risk_col, tau_p, k)
-
-        tau_h = best_tau(apply_df, args.risk_col, tau_grid, k)
-        hind = apply_tau(apply_df, args.risk_col, tau_h, k)
+        i_p = best_index(sims_select, k)          # chosen without the later quarters
+        i_h = best_index(sims_apply, k)           # chosen with hindsight
+        tau_p, tau_h = float(tau_grid[i_p]), float(tau_grid[i_h])
+        prosp = dict(sims_apply[i_p], cost_rate=cost_rate(sims_apply[i_p], k))
+        hind = dict(sims_apply[i_h], cost_rate=cost_rate(sims_apply[i_h], k))
 
         rows.append({
             "threshold_from": str(select_q),
@@ -202,7 +197,7 @@ def main() -> int:
     ax.plot(summary["k"], summary["hindsight_vs_rtf_pct"], "--", marker="o", ms=6,
             lw=1.8, color=GREY, label="threshold chosen with hindsight")
     ax.plot(summary["k"], summary["prospective_vs_rtf_pct"], "-", marker="o", ms=6,
-            lw=2.2, color=NAVY, label="threshold chosen on the previous quarter")
+            lw=2.2, color=NAVY, label=f"threshold chosen in advance, on {select_q}")
     ax.axhline(0.0, color=RUST, lw=1.3, ls=":", label="run-to-failure")
     ax.set_xscale("log")
     ax.set_xticks(K_GRID)

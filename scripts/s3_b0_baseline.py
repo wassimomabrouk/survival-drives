@@ -220,21 +220,58 @@ def conditional_risk(km: pd.DataFrame, horizon_hours: int = HORIZON_HOURS) -> pd
     )
 
 
+def _supported(c: pd.DataFrame) -> pd.DataFrame:
+    """The part of a KM curve its risk set can support, as conditional survival.
+
+    A model whose drives all entered the data already in service has a tiny risk
+    set at its earliest ages, so its first few failures produce large steps that
+    say nothing about the model. The curve is therefore started where at least
+    MIN_RISK_SET drives are at risk, recomputed from there as survival conditional
+    on reaching that age, and stopped where the risk set falls below it again.
+    """
+    ok = c["n_at_risk"] >= MIN_RISK_SET
+    if not ok.any():
+        return c.iloc[0:0]
+    first = int(np.argmax(ok.to_numpy()))
+    last = len(ok) - int(np.argmax(ok.to_numpy()[::-1]))
+    sub = c.iloc[first:last].copy()
+    sub["survival"] = np.cumprod(1.0 - sub["hazard_increment"].to_numpy())
+    return sub
+
+
 def plot_survival_by_model(curves: dict[str, pd.DataFrame], overall: pd.DataFrame, path: Path) -> None:
     fig, ax = plt.subplots(figsize=(9, 5.5))
-    ax.step(overall["age_years"], overall["survival"], where="post",
+    ov = overall.loc[overall["n_at_risk"] >= MIN_RISK_SET]
+    ax.step(ov["age_years"], ov["survival"], where="post",
             color="black", lw=2.2, label="all data drives", zorder=5)
-    ax.fill_between(overall["age_years"], overall["survival_lo"], overall["survival_hi"],
+    ax.fill_between(ov["age_years"], ov["survival_lo"], ov["survival_hi"],
                     step="post", color="black", alpha=0.10, zorder=4)
+    xmax = float(ov["age_years"].max())
+    late = False
     for name, c in curves.items():
-        ax.step(c["age_years"], c["survival"], where="post", lw=1.4, alpha=0.9, label=name)
+        sub = _supported(c)
+        if sub.empty:
+            continue
+        t0 = float(sub["age_years"].iloc[0])
+        style = "-" if t0 < 0.5 else ":"
+        late |= t0 >= 0.5
+        label = name if t0 < 0.5 else f"{name}, from {t0:.1f} years"
+        t = np.concatenate([[t0], sub["age_years"].to_numpy()])
+        sv = np.concatenate([[1.0], sub["survival"].to_numpy()])
+        ax.step(t, sv, where="post", lw=1.4, ls=style, alpha=0.9, label=label)
+        xmax = max(xmax, float(sub["age_years"].max()))
     ax.set_xlabel("drive age (years of power on time)")
     ax.set_ylabel("surviving fraction")
     ax.set_title("Kaplan-Meier survival with delayed entry, by drive model")
-    ax.set_xlim(0, 12)
+    ax.set_xlim(0, xmax * 1.03)
     ax.grid(alpha=0.25, lw=0.6)
     ax.legend(fontsize=8, loc="lower left", frameon=False)
-    fig.tight_layout()
+    note = (f"each curve is drawn where at least {MIN_RISK_SET} drives are at risk")
+    if late:
+        note += ("; dotted curves belong to models first observed already in service,\n"
+                 "start at 1.0 at that age and show survival conditional on reaching it")
+    fig.text(0.5, 0.012, note, fontsize=8, color="#555555", ha="center")
+    fig.tight_layout(rect=(0, 0.05 if late else 0.03, 1, 1))
     fig.savefig(path, dpi=150)
     plt.close(fig)
 

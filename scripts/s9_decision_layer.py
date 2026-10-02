@@ -43,11 +43,17 @@ alternatives** rather than against nothing:
   2. The denominator is drive operating years actually served under the policy,
      so replacing early shrinks it. This is what charges a policy for the
      remaining useful life it discards.
-  3. Replacement drives are assumed to carry no failure risk within the window.
-     This favours aggressive policies, so any advantage found for risk-based
-     replacement is if anything understated relative to a simulator that modelled
-     infant mortality in replacements.
+  3. Because the successor is not simulated, its failure risk and its service
+     time are both omitted. The two push in opposite directions and the net
+     direction was not measured; at k = 10 the policy removes about 1% of
+     drive-years, so the effect is likely small. (An earlier version of this item
+     said the omission favours aggressive policies and that their advantage was
+     therefore understated, which contradicts itself. Corrected 2026-10-02.)
   4. Decisions are made at 28 day landmarks, not continuously.
+  5. A replacement is credited with any failure the drive would have had later
+     in the simulated window, not only within the 30 day horizon. Savings
+     therefore grow with the length of the window simulated, and are quoted with
+     it. `s11b_window_check.py` measures how much.
 
 **The causal caution that governs the wording.** No intervention took place. When
 the policy replaces a drive that was later observed to fail, the correct statement
@@ -133,6 +139,25 @@ def simulate(risk: np.ndarray, trigger: np.ndarray, t_days: np.ndarray,
             "failures_per_year": n_fail / years if years > 0 else np.nan}
 
 
+def threshold_grid(risk: np.ndarray) -> np.ndarray:
+    """Candidate replacement thresholds tau.
+
+    Two grids combined. Forty quantiles of predicted risk from the 90th to the
+    99.999th percentile, dense where the rows are. And forty log-spaced values from
+    the 90th percentile up to the largest predicted risk, dense in risk itself.
+    The quantile grid alone left nothing between tau = 0.079 and 0.621 on the
+    21-quarter run, which is exactly where the optimum sits at low cost ratios
+    (the myopic threshold is 1/k), so conclusions for k of 5 and below depended
+    on where the grid happened to have points. Added 2026-10-02 after an
+    independent review; DESIGN.md section 13 logs it.
+    """
+    r = risk[np.isfinite(risk)]
+    q = np.quantile(r, np.linspace(0.90, 0.99999, 40))
+    lo, hi = float(np.quantile(r, 0.90)), float(r.max())
+    g = np.geomspace(max(lo, 1e-9), hi, 40, endpoint=False)
+    return np.unique(np.concatenate([q, g]))
+
+
 def cost_rate(res: dict, k: float) -> float:
     """Cost in units of C_R, per drive operating year."""
     return (res["replacements"] + k * res["failures"]) / res["served_years"]
@@ -182,7 +207,7 @@ def main() -> int:
     rows = []
     rows.append({"policy": "run-to-failure", "parameter": np.nan, **base})
 
-    tau_grid = np.unique(np.quantile(risk, np.linspace(0.90, 0.99999, 40)))
+    tau_grid = threshold_grid(risk)
     for tau in tau_grid:
         r = simulate(risk, risk > tau, t_days, fail, starts, ends)
         rows.append({"policy": "risk-based", "parameter": float(tau), **r})
@@ -234,11 +259,11 @@ def main() -> int:
     sens = []
     for mult in LEVEL_GRID:
         r_adj = np.clip(risk * mult, 0, 1)
+        # One simulation per threshold; the cost ratio only re-weights its counts.
+        sims = [(tau, simulate(r_adj, r_adj > tau, t_days, fail, starts, ends))
+                for tau in tau_grid]
         for k in K_GRID:
-            sub = []
-            for tau in tau_grid:
-                res = simulate(r_adj, r_adj > tau, t_days, fail, starts, ends)
-                sub.append((tau, cost_rate(res, k), res))
+            sub = [(tau, cost_rate(res, k), res) for tau, res in sims]
             tau_b, cr_b, res_b = min(sub, key=lambda z: z[1])
             rtf = cost_rate(base, k)
             sens.append({"level_multiplier": mult, "k": k, "best_tau": tau_b,

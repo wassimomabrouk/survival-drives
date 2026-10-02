@@ -14,54 +14,65 @@ they were made in the open and before the results they could have been fitted to
 
 ## 0. Feasibility (completed)
 
-Section 0 ran over eight quarters of Backblaze Drive Stats, 2024 Q1 through 2026
-Q1, ingested to Parquet with weekly sampling and all failure rows retained.
+Section 0 was first run over nine quarters of Backblaze Drive Stats, 2024 Q1
+through 2026 Q1 (earlier versions of this document said eight, a miscount), and
+rerun when the window was extended to twenty-one quarters, 2021 Q1 through 2026 Q1
+(section 13a). The figures below are from the 21-quarter run. The nine-quarter
+version of this section is in git history at commit 29a87d1. Data was ingested to
+Parquet with weekly sampling and every failure row retained.
 
 | quantity | value |
 |---|---|
-| drives | 384,213 |
-| drive days observed | 36,142,935 |
-| failure events | 9,716 (data drives only) |
-| models with 100+ drives | 50 |
-| models with 130+ events | 20 |
-| models with 200+ events | 14 |
+| drives / spells after splitting | 429,870 / 441,894 |
+| sampled drive-day rows | 70,347,832, one day in seven plus every failure row |
+| failure events, data drives | 19,245 before spell splitting, 18,738 after |
+| models with 100+ drives | 54 |
+| models with 130+ events | 24 |
+| models with 200+ events | 20 |
+
+The nine-quarter version labelled the row count "drive days observed". Each row
+stands for a week of service, so that label understated the observed drive days by
+roughly a factor of seven.
 
 Validation: the ingest reproduces Backblaze's published Q1 2026 figure of 1,030
-failures exactly, and the exposure-based annualized failure rate reproduces their
-published 1.24% for that quarter.
+failures exactly.
 
-**Q1, does the table build cleanly.** Yes. No schema break across the eight
-quarters and no duplicate drive days. Power-on hours are missing on 1.2% of
-drives and capacity is malformed on under 0.06% of rows.
+**Q1, does the table build cleanly.** Yes. No schema break across the twenty-one
+quarters and no duplicate drive days. Power-on hours are missing on 2.8% of drives.
 
-The one real problem: `(serial_number, model)` is not a stable key over a
-two-year window. 11,590 drives (3.0%) show non-monotonic power-on hours, 164
-continue reporting after being flagged failed, and 24 carry more than one failure
-flag. These are serial reuse and drive re-insertion, and they are handled by
-spell splitting (section 3).
+The one real problem: `(serial_number, model)` is not a stable key over a long
+window. 11,587 drives (2.7%) show non-monotonic power-on hours, 308 continue
+reporting after being flagged failed, and 39 carry more than one failure flag.
+These are serial reuse and drive re-insertion, and they are handled by spell
+splitting (section 3).
 
-**Q2, are there enough events.** Decisively yes. 9,716 events is far above what
-this design requires, and 14 models individually exceed 200 events, which
-supports per-model stratification without falling back to manufacturer level.
+**Q2, are there enough events.** Decisively yes. 18,738 events after spell
+splitting, and 20 models individually exceed 200, which supports per-model
+stratification without falling back to manufacturer level.
 
 **Q3, how much left truncation is present.**
 
 | entry year | drives | fraction used on entry | median hours at entry |
 |---|---|---|---|
-| 2024 | 322,206 | 84.9% | 22,098 |
-| 2025 | 43,791 | 6.5% | 211 |
-| 2026 | 9,387 | 0.6% | 251 |
+| 2021 | 230,116 | 76.5% | 7,389 |
+| 2022 | 31,214 | 39.8% | 502 |
+| 2023 | 52,354 | 40.3% | 512 |
+| 2024 | 51,737 | 10.8% | 250 |
+| 2025 | 43,730 | 6.4% | 211 |
+| 2026 | 9,383 | 0.5% | 251 |
 
-Left truncation affects 84.9% of the cohort, but the cause is the observation
-window, not fleet procurement. Drives arriving after the window opened are
-essentially new, a median of roughly nine days of prior use. Backblaze is not
-installing second-hand drives.
+52.1% of drives had more than 30 days of use when first observed, mostly drives
+already in the fleet when the window opened. Drives arriving from 2024 onward are
+essentially new. The nine-quarter version concluded from that that Backblaze is not
+installing second-hand drives; on the longer window about 40% of drives first seen
+in 2022 and 2023 already had more than 30 days of use, and the cause (drives moved
+into the reported fleet, or spells created by splitting) was not determined. The
+conclusion holds for 2024 onward and is not made in general.
 
-This matters for framing. Delayed entry is mandatory because most drives were
-already in service on 2024-01-01, not because used drives keep arriving. It also
-yields a free validation: the 53,178 drives entering in 2025 and 2026 form an
-incident cohort with negligible truncation, against which the delayed-entry model
-can be checked (section 9, expectation E5).
+Delayed entry is mandatory because most drives were already in service when the
+window opened. It also yields a validation: drives first observed with under 30 days
+of use form an incident cohort with negligible truncation, against which the
+delayed-entry estimate can be checked (section 9, expectation E5).
 
 **Q4, which SMART attributes are usable.** Coverage is binary at model level,
 confirming it is a firmware property rather than a data quality issue.
@@ -69,17 +80,17 @@ confirming it is a firmware property rather than a data quality issue.
 | attribute | Seagate | Toshiba | WDC | HGST |
 |---|---|---|---|---|
 | 5, 9, 12, 193, 194, 198 | 1.00 | 1.00 | 1.00 | 1.00 |
-| 197 | 1.00 | 0.94 | 1.00 | 1.00 |
+| 197 | 1.00 | 0.93 | 1.00 | 1.00 |
 | 187 reported uncorrectable | 1.00 | 0.00 | 0.00 | 0.00 |
 | 188 command timeout | 1.00 | 0.00 | 0.002 | 0.00 |
 | 190 airflow temperature difference | 1.00 | 0.00 | 0.00 | 0.00 |
-| 241, 242 LBAs written and read | 1.00 | 0.16 | 0.05 | 0.09 |
+| 241, 242 LBAs written and read | 1.00 | 0.13 | 0.07 | 0.07 |
 
-Attributes 187, 188, 190, 241 and 242 exist only on Seagate. The Toshiba figure
-of 0.94 on attribute 197 is attributable to two models, `TOSHIBA MG08ACA16TEY`
-and the much smaller `TOSHIBA MG07ACA14TEY`, which report zero coverage on 197
-while every other model in the fleet reports full coverage. The second was missed
-when this section was first written and found on 2026-10-02 (section 13).
+Attributes 187, 188, 190, 241 and 242 exist only on Seagate. The Toshiba shortfall
+on attribute 197 is attributable to two models, `TOSHIBA MG08ACA16TEY` and the much
+smaller `TOSHIBA MG07ACA14TEY`, which report zero coverage on 197 while every other
+model in the fleet reports full coverage. The second was missed when this section
+was first written and found on 2026-10-02 (section 13).
 
 This constraint is not a defect. It supplies the project's second research
 question (section 1).
@@ -121,7 +132,8 @@ threshold to the cost ratio between an unplanned failure and a planned swap?
 
 ## 2. Data
 
-Backblaze Drive Stats, 2024-01-01 to 2026-03-31. One row per drive per day,
+Backblaze Drive Stats, 2021-01-01 to 2026-03-31 (2024-01-01 to 2026-03-31 on the
+first run). One row per drive per day,
 sampled to one day in seven with all failure-flagged rows retained
 unconditionally. Cited per Backblaze's terms of use.
 
@@ -135,21 +147,28 @@ SMART attributes 5, 9, 12, 187, 188, 190, 193, 194, 197, 198, 241, 242.
 **Time scale.** Power-on hours (`smart_9_raw`), not calendar days in fleet. A
 drive enters the risk set at the power-on hours it reported on its first observed
 day. Using days in fleet would assume every drive was new on arrival, which is
-false for 84.9% of this cohort, and would bias the early hazard downward through
-immortal time bias.
+false for 52.1% of drives (84.9% on the nine-quarter window): the failures of drives
+that arrived old would be attributed to young ages, biasing the early hazard
+upward. The opposite mistake, power-on hours with every drive counted at risk from
+zero, credits drives with failure-free time before they were observed, which is
+immortal time, and biases the early hazard downward. Delayed entry avoids both.
+(Corrected 2026-10-02; the earlier wording attributed the first mistake to immortal
+time bias, which describes the second.)
 
 **Spell splitting.** A serial number is not a drive. A `(serial_number, model)`
 pair is split into separate spells at either of:
 
-1. a decrease in power-on hours (counter reset or reused serial), 11,590 drives
-2. any observation after a failure flag, 164 drives
+1. a decrease in power-on hours (counter reset or reused serial), 11,587 drives
+2. any observation after a failure flag, 308 drives
+
+(Counts from the 21-quarter run; 11,590 and 164 on nine quarters.)
 
 Each resulting spell is treated as an independent unit with its own entry hours,
 exit hours and outcome. The affected counts are reported in the README rather
 than silently absorbed.
 
 Observation gaps are deliberately **not** a splitting condition, despite
-affecting 1,641 drives. Because the time scale is power-on hours rather than
+affecting 6,467 drives (1,641 on nine quarters). Because the time scale is power-on hours rather than
 calendar time, a drive that goes offline for three weeks accrues no exposure and
 produces no gap in analysis time. Splitting there would manufacture a spurious
 truncated entry for a drive that is physically continuous and whose power-on
@@ -187,8 +206,10 @@ residual ambiguity is stated as limitation 2 rather than modelled away.
 
 **Exclusions**, each with its count reported:
 
-- boot devices and SSDs, identified by model capacity under 1 TB: 4,735 drives
-- drives with no usable power-on hours reading: 4,641 drives
+- boot devices and SSDs, identified by model capacity under 1 TB: 5,657 drives
+- drives with no usable power-on hours reading: 12,093 drives
+
+(21-quarter counts; 4,735 and 4,641 on nine quarters.)
 - models with fewer than 100 drives, for the stratified arms
 
 ---
@@ -205,17 +226,17 @@ for the same reason from 2026-10-02 (section 13); in the raw data, 2021 Q1 to
 That exclusion is deliberate. Backblaze's canonical predictive set is attributes
 5, 187, 188, 197 and 198, of which only 5, 197 and 198 exist fleet-wide. Dropping
 197 to retain one model would leave the universal arm with two of the five, which
-is the more expensive trade. A sensitivity fit including the model with 197
-dropped is reported alongside, to confirm the excluded population is not
-systematically different from the rest.
+is the more expensive trade. A sensitivity fit including the excluded models with
+197 dropped was planned here and **was not run** (section 13, 2026-10-02).
 
-**Cohort B, Seagate.** Seagate only, 4,075 events. Features: the Cohort A set plus
-SMART 187, 188, 190, 241, 242.
+**Cohort B, Seagate.** Seagate only, 10,294 events on the 21-quarter window (4,075
+on nine). Features: the Cohort A set plus SMART 187, 188, 190, 241, 242.
 
-For each attribute the model sees the current value, the change over the
-preceding 30 days, and a binary indicator for whether the value is non-zero,
-since several of these attributes are zero-inflated in a way that makes the raw
-magnitude less informative than the fact of being non-zero.
+For each counter the model sees log1p of the current value and log1p of its rise
+over the preceding 30 days; temperature enters as a level. The original
+specification also gave each attribute a binary non-zero indicator. It was removed
+after B2's first fit showed a singular design: log1p(x) is zero exactly when x is,
+so the indicator is very nearly collinear with it (section 13, 2026-10-02).
 
 ---
 
@@ -266,11 +287,14 @@ window.
 
 | fold | training window | test quarter |
 |---|---|---|
-| 1 | 2024-01-01 to 2025-06-30 | 2025 Q3 |
-| 2 | 2024-01-01 to 2025-09-30 | 2025 Q4 |
-| 3 | 2024-01-01 to 2025-12-31 | 2026 Q1 |
+| 1 | 2021-01-01 to 2025-06-30 | 2025 Q3 |
+| 2 | 2021-01-01 to 2025-09-30 | 2025 Q4 |
+| 3 | 2021-01-01 to 2025-12-31 | 2026 Q1 |
 
-Roughly 3,200 events across the three test quarters. A single held-out quarter
+(Training windows began on 2024-01-01 on the nine-quarter run.)
+
+About 3,200 failures were recorded in the three test quarters (1,254, 945 and
+1,030), of which 2,667 fall inside a landmark horizon on Cohort A rows. A single held-out quarter
 would carry only about 1,030, which is too few to separate six competing models
 on IPCW Brier with usable confidence intervals. Rolling origin also shows whether
 performance is stable over time rather than at one arbitrary cut.
@@ -290,7 +314,7 @@ lifetime question rather than a horizon-specific one.
 
 - **B0** Kaplan-Meier with delayed entry on the spell panel, no covariates, converted to a 30-day conditional risk given current age. Also refit on landmark rows as age alone, so it is directly comparable with the rest.
 - **B1** Nonparametric hazard by drive model and half-year age band, estimated as events over exposure with Gamma-Poisson shrinkage toward the model-level and global rates. No SMART attributes.
-- **B2** Cox on landmark rows with the Cohort A universal SMART set, stratified by drive model
+- **B2** Cox on landmark rows with the Cohort A universal SMART set, stratified by drive model. **As implemented**: a piecewise-exponential (Poisson) hazard on landmark rows with log exposure as offset and the B1 hazard as a further offset, so drive model and age are held fixed through B1 rather than through stratification. The change was made before B2 was fitted and recorded at the time only under E6 in section 14; section 13 now logs it (2026-10-02).
 - **B3** As B2 plus the Seagate-only attributes, Cohort B only
 - **M2** Boosted trees on the same target as B2: XGBoost with a Poisson objective, the B1 hazard as a per-row offset, and log exposure carried through `base_margin`. Identical target, identical offset, identical rows as B2; only the functional form changes, from log-linear to boosted trees. That is what makes it a clean test of whether nonlinearity and interactions among SMART attributes buy anything.
 - **M3** DeepHit, phase 2 only (section 11)
@@ -318,6 +342,11 @@ fail. A weak B1 would let E2 pass trivially and prove nothing.
 - **Primary**: IPCW Brier score at the 30-day horizon, averaged across landmarks
 - **Discrimination**: Uno's concordance and time-dependent AUC at 30 days
 - **Calibration**: predicted against observed risk by decile, plus calibration slope and intercept
+
+Uno's concordance and the calibration slope and intercept were **not computed**.
+The IPCW time-dependent AUC, the IPCW Brier score and the decile tables were, and
+every verdict in section 14 rests on those. Recorded in section 13 rather than
+dropped silently.
 
 Harrell's C is not reported as a headline. It is biased under heavy censoring and
 rewards ranking while saying nothing about whether the probabilities are usable
@@ -359,11 +388,15 @@ a plausible range.
 
 **Two quantities are swept, not estimated.** The cost ratio k is unknown because
 it is not public. The fleet's overall hazard level is unknown for a different
-reason: it is genuinely volatile. Measured landmark event rates per 1000 rows run
-1.077, 1.542, 1.554, 1.204, 1.186, 1.037, 1.287, 0.807, 0.901 across the nine
-quarters, a coefficient of variation near 21% with no trend. Models trained on
-past quarters therefore carry a level that is right on average and wrong in any
-particular quarter, by roughly 20% in either direction.
+reason: it is volatile. On the nine-quarter window, landmark event rates per 1000
+rows ran 1.077, 1.542, 1.554, 1.204, 1.186, 1.037, 1.287, 0.807, 0.901, a
+coefficient of variation near 21% with no trend. On twenty-one quarters
+(`reports/s1_landmark_by_quarter.csv`) the quarter-to-quarter change has a standard
+deviation of about 21% on the log scale, and the series also drifts: about 0.85
+through 2021, 1.1 to 1.7 through 2023 and 2024, 0.8 to 0.9 by the end of 2025.
+Models trained on past quarters therefore carry a level that is wrong in any
+particular quarter, by roughly 20% in either direction, and on the longer window
+also biased toward the higher-rate years they were trained on.
 
 A recalibration step fitted on the preceding quarter was tried and **removed**,
 because the quantity being corrected is the same size as the quarter-to-quarter
@@ -451,16 +484,22 @@ elsewhere.
 
 ## 12. Stated limitations
 
+Updated on 2026-10-02 to the 21-quarter window. Where a nine-quarter figure differs
+materially it is given in brackets.
+
 1. Failure time is interval-censored. Backblaze records one snapshot per day, so a drive observed healthy on its last recorded day and gone the next failed somewhere inside that interval. Every failure row is retained regardless of the weekly sampling, so the interval is under 24 hours against lifetimes of tens of thousands of hours, and the analysis takes the recorded final day as the event time. Real, and immaterial at this scale.
 2. Weekly sampling means power-on hours at spell entry are known to within roughly 168 hours. Immaterial against lifetimes in the tens of thousands of hours, but stated.
-3. Backblaze does not publish why a drive left the fleet, so failure and non-failure removal cannot be separated from the source data. This was tested rather than assumed (`scripts/s2_censoring_check.py`). Removed drives carry roughly twice the prevalence of non-zero reallocated, pending and offline uncorrectable sectors as surviving drives, but matched on drive model and age that excess falls to 0.6, 0.3 and 0.3 percentage points respectively. Removals are also heavily concentrated by model, with a single model accounting for 50 to 99 percent of removals in most quarters. Both findings indicate wholesale retirement of ageing models rather than selection on individual drive health, which makes censoring conditionally independent given the model stratum and the power-on-hours time scale that the primary analysis already conditions on. A residual tail of under one percent of removals, concentrated in the HGST 12 TB models, does show genuine health selection and is reported separately. This is why no competing risks model is fitted (section 3): the finding is that censoring is conditionally independent given the covariates already in use, and the dataset carries no observed cause-of-exit label that a subdistribution hazard model would require.
+3. Backblaze does not publish why a drive left the fleet, so failure and non-failure removal cannot be separated from the source data. This was tested rather than assumed (`scripts/s2_censoring_check.py`). Drives removed within 30 days carry roughly twice the prevalence of non-zero reallocated, pending and offline uncorrectable sectors as surviving drives, but matched on drive model and age that excess falls to 0.08, 0.32 and 0.28 percentage points (0.6, 0.3 and 0.3 on nine quarters). Removals are also concentrated by model: in 17 of 21 quarters a single model accounts for at least half of all removals. Both findings indicate wholesale retirement of ageing models rather than selection on individual drive health, which makes censoring close to conditionally independent given the model and the power-on-hours time scale the analysis already conditions on. Not entirely: in the model-by-age cells reported in `s2_health_excess_by_cell.csv`, cells where removed drives show a health excess above one percentage point hold about 6% of removed rows. This is why no competing risks model is fitted (section 3): the dataset carries no observed cause-of-exit label that a subdistribution hazard model would require.
 4. Failure is Backblaze's operational definition, not a physical one.
 5. Raw SMART values are not comparable across manufacturers. Models are stratified accordingly, and no cross-vendor comparison of raw magnitudes is made.
-6. The window opens on 2024-01-01, so 84.9% of the cohort is left-truncated and the fleet's earlier history is unobserved.
-7. Fold 1 trains on six quarters against fold 3's nine, so early-fold results rest on less data. Per-fold reporting makes this visible rather than hiding it in a pooled average.
+6. The window opens on 2021-01-01, so 52.1% of drives are left-truncated (84.9% when it opened on 2024-01-01) and the fleet's earlier history is unobserved.
+7. Fold 1 trains on eighteen quarters against fold 3's twenty (six against eight on nine quarters; an earlier version of this item said nine, a miscount). Per-fold reporting makes the difference visible.
 8. Results describe one operator's datacenters, workload and procurement decisions. They do not describe hard drives in general.
-9. 726 of 9,790 events (7.4%) fall into no landmark window and are invisible to every model. Composition, measured in `scripts/s1b_coverage_audit.py`: 378 failed before the first landmark, which is burn-in from the 30 day change feature and costs training data only; 143 had a spell of roughly one day, giving a landmark model no history to predict from; 198 were excluded by the staleness rule because their most recent telemetry predated the landmark by more than 14 days; 7 entered after the last landmark. These exclusions are common to every model, so the comparison between models is unaffected, but reported performance is conditional on a drive being scorable at all. In particular **the model does not address infant mortality**: drives failing within days of installation are structurally outside a landmark framework, and no claim is made about them. The uncovered share rises from 0.7% in 2025 Q1 to 12.3% in 2026 Q1 as the fleet grows and newly installed drives make up more of the population, which reduces fold 3's effective event count from 998 to 875.
-10. E5 as originally specified compared pooled full-cohort survival against the incident cohort at fixed ages, and failed at age 2: 0.9831 against a band of [0.9842, 0.9865], a gap of 0.23 percentage points. That specification was not like for like. At age 2 the full cohort is 37% 2022 install vintage, 48% 2023 and 15% 2024, while the incident cohort is almost entirely 2024, since nothing installed later can reach age 2 within a 27 month window. Holding drive model fixed changed the gap by 0.000 pp, ruling out model composition. Holding installation vintage fixed resolves it: the 2024 vintage under delayed entry gives 0.98583 against the incident arm's 0.98622, a difference of 0.04 pp. Survival at age 2 across the 2022, 2023 and 2024 vintages spans 0.240 pp, which by itself exceeds the original gap. Delayed entry is therefore validated on the comparison that tests it. One residual anomaly is left unexplained rather than rationalised: pooled full-cohort survival at age 2 (0.98393) falls below all three individual vintage estimates, where a risk-set-weighted pooling should place it inside their range. The likely mechanism is that 2025 and 2026 installations contribute hazard at young ages without ever reaching age 2, but this was not verified. All quantities here are under a quarter of a percentage point, against a project whose predictions are 30 day risks at landmarks.
+9. 627 of 18,738 events (3.3%) fall into no landmark window and are invisible to every model (726 of 9,790, 7.4%, on nine quarters). Composition, measured in `scripts/s1b_coverage_audit.py`: 151 failed before the first landmark, burn-in from the 30 day change feature that costs training data only; 258 had a spell shorter than the landmark step, a median of under one day, giving a landmark model no history to predict from; 211 were excluded by the staleness rule; 7 entered after the last landmark. In the three test quarters the uncovered share is 4.1%, 6.9% and 12.3%, 238 events in all, of which 180 are assigned to the staleness rule, 51 to short spells and 7 to late entry (`s1b_coverage_reason_by_quarter.csv`). The nine-quarter version attributed the 2026 Q1 figure to fleet growth and infant mortality without measuring it; measured, it is mostly the staleness rule. That category is the audit's residual, assigned when no other cause fits, and why it concentrates in 2026 Q1 was not determined. These exclusions are common to every model, so the comparison between models is unaffected, but reported performance is conditional on a drive being scorable at all. In particular **the model does not address infant mortality**: drives failing within days of installation are structurally outside a landmark framework, and no claim is made about them.
+10. E5. On nine quarters the pooled comparison failed at age 2 by 0.23 pp, and matching on drive model and installation vintage resolved it (0.98583 against 0.98622 for the 2024 vintage). On twenty-one quarters the pooled model-matched comparison fails at age 2 by 0.16 pp, and the like-for-like comparison within installation year, run under a rule fixed beforehand (section 13), fails 6 of 20 times: at every age for 2020, where delayed entry sits 0.21 to 0.43 pp above the incident arm, and at 1.5 and 2 years for 2022, where it sits 0.18 and 0.55 pp below. The 2020 comparison is not like for like at monthly resolution, since the only 2020 drives that count as incident are those installed in roughly the last month of 2020; that is a design flaw in the test, found after the result. The 2022 gap is unexplained. The delayed-entry survival curves are therefore not validated for those two vintages. The landmark models do not depend on them.
+11. **The models over-predict the overall failure rate.** On the held-out rows the observed 30-day risk is about 0.00092; B1 predicts 0.00112, B2 0.00134 and M2 0.00138. The decision layer is built to tolerate a level error (section 10), but the probabilities should not be read as calibrated rates.
+12. **Savings depend on the simulated period.** A replacement is credited with any failure the drive would have had later in the simulated window, not only within the 30-day horizon. Measured in `s11b_window_check.py`: at k = 10 the hindsight-best saving is 5.2 to 18.5% over a single quarter, 15.4 and 20.2% over the two adjacent pairs, and 25.1% over all three. Adding a quarter raises the saving at every k from 5 up, and among equal-length windows the one with more failures saves more. Savings are therefore quoted with the period they were measured over.
+13. **The simulator removes a replaced drive and does not model its replacement.** The replacement drive's own failure risk and its added service time are both omitted. At k = 10 the policy removes about 1% of drive-years, so the effect is likely small. The first README and the s9 docstring claimed the omission favours aggressive policies and that any advantage was therefore understated; those two statements contradict each other, and the direction of the effect was never measured.
 
 ---
 
@@ -697,7 +736,8 @@ documentation was rewritten.
    0.874) had the same mismatch.
 3. **Uncovered events rise through the test quarters**, 4.1%, 6.9% and 12.3% of
    events in 2025 Q3, 2025 Q4 and 2026 Q1. s1b now attributes them by cause and
-   quarter.
+   quarter. (Corrected in the next entry: this rise was already documented on
+   nine quarters, as limitation 9. What was new was attributing it by cause.)
 4. **B2's oracle Brier advantage is a point estimate only.** The interval on B2
    minus B1 at oracle level is [-1.59e-05, +1.25e-07], which includes zero. The
    supportable statement is that B2's Brier loss disappears once level is
@@ -729,6 +769,121 @@ each.
 2026-10-02 should reproduce exactly, except B1's calibration spread in the E2
 output. Any other change is a reproducibility defect and is reported as one.
 
+**2026-10-02, results of the corrected run, documentation rewritten for 21
+quarters, and items that had gone unlogged.** At the time: every script had been
+run on the 21-quarter window and its output read, including the reruns of s1b,
+s3b, s5, s8 and s10 that followed the previous entry.
+
+*Outcomes against what the previous entry fixed in advance.*
+
+- The rerun prediction held: every number s5 and s8 reported reproduced exactly,
+  and the only change was B1's calibration spread in the E2 output, 0.418 to
+  0.494, as predicted.
+- **E5 fails on the 21-quarter window** under the rule fixed in the previous
+  entry: 6 of 20 comparisons outside the incident band, at every age for the 2020
+  installation year and at 1.5 and 2 years for 2022. This is a flip from the
+  9-quarter verdict and is reported as one (section 13a, commitment 2). After the
+  result it was noticed that the 2020 comparison is not like for like at monthly
+  resolution, because the only 2020 drives that can count as incident are those
+  installed in roughly the last month of 2020. That is a design flaw in the test.
+  It is recorded, and the verdict is not changed because of it. The 2022 gap is
+  unexplained.
+- The uncovered-event audit by cause shows the test-quarter rise is mostly the
+  staleness rule (180 of 238 events), not the fleet growth and infant mortality the
+  nine-quarter text had asserted without measuring. Item 3 of the previous entry
+  presented the rise itself as newly found; it had been documented on nine
+  quarters.
+
+*A diagnostic added after reading results.* `s11b_window_check.py` runs the
+hindsight-best policy on every single quarter, adjacent pair and all three, to
+explain why s11's two-quarter savings sit well below s9's three-quarter ones. The
+expectation stated before it ran was that quarter composition would explain it.
+Both effects appear and agree: adding a quarter raises the saving at every k from
+5 up, and among equal-length windows the higher failure rate saves more. Section
+12, limitation 12 now carries it, and the README quotes savings with the window
+they were measured over. No verdict depends on this script.
+
+*Corrections that change figures or wording only.*
+
+- s10's check that the ladder and the E2 output score the same rows used a
+  tolerance of 1e-9, below the floating-point noise between s5's and s8's separate
+  refits, and stopped the run. Loosened to 1e-5; a row mismatch would differ in the
+  third decimal.
+- The per-model survival figure in s3 drew each model's curve from its first
+  event, so a model observed only from old age (ST4000DM000) showed a large step on
+  a risk set of 15 drives. Curves are now drawn only where at least 500 drives are
+  at risk, as survival conditional on reaching that age. The KM tables in
+  `reports/` are unchanged.
+- s10's calibration figure used a fixed axis floor of 2e-4, which cut off the
+  lowest deciles of B2 and M2 on this window. The floor now comes from the data.
+- The s9 docstring and the first README stated that omitting the replacement
+  drive's risk favours aggressive policies and that their advantage was therefore
+  understated, which contradicts itself. Corrected in both; the direction was never
+  measured (limitation 13).
+
+*Items that should have been logged earlier and were not.*
+
+- B2 and B3 were implemented as a piecewise-exponential hazard with the B1 offset,
+  not the stratified Cox model section 7 specifies. The change preceded B2's fit
+  but was recorded only under E6 in section 14. Section 7 now notes it.
+- The non-zero indicators in section 4 were removed after B2's first fit showed a
+  singular design. Recorded in the code at the time, not here.
+- The sensitivity fit in section 4, including the excluded Toshiba models with 197
+  dropped, was never run.
+- Uno's concordance and the calibration slope and intercept in section 8 were
+  never computed.
+- Section 0 described a nine-quarter window as eight quarters, and limitation 7
+  described a fold-3 training window of eight quarters as nine. It also labelled
+  the weekly-sampled row count as drive days observed. All three corrected.
+- Section 0 concluded from the 2025 and 2026 arrivals that Backblaze does not
+  install second-hand drives. On the longer window about 40% of drives first seen in
+  2022 and 2023 had more than 30 days of use, so the conclusion is now limited to
+  2024 onward.
+
+*Sections rewritten.* 0, 2, 3, 4, 6, 10 and 12 now carry 21-quarter figures, with
+nine-quarter ones in brackets where they differ. Section 14 reports both windows
+side by side, as section 13a requires. Section 9 is unchanged.
+
+**2026-10-02, independent review of the documentation; threshold grid refined,
+a drive-model-and-age policy added.** At the time: everything in the previous
+entry, plus a review of README.md and this document by a separate agent that had
+not seen the work, given only the documents and the CSVs. Its findings that change
+code or results:
+
+- **The threshold grid was coarse exactly where low cost ratios need it.** It held
+  forty quantiles of predicted risk, which left nothing between tau = 0.079 and
+  0.621, while the myopic threshold at k = 5 is 0.2. The README's claims for k of 5
+  and below, that the saving appears only over three quarters and that break-even
+  is near k = 2, could therefore reflect the grid rather than the policy.
+  `threshold_grid` in s9 now adds forty log-spaced values up to the largest
+  predicted risk, and s9, s11 and s11b all use it. The new grid contains the old
+  one.
+- **"Everything the policy is worth comes from SMART telemetry" was never tested.**
+  Only the M2 policy was simulated. s9 is now also run on B1's predictions, drive
+  model and age only, into `reports/policy_b1/`.
+
+Predictions, written before the reruns:
+
+- Hindsight savings in s9 and s11b can only stay equal or rise, since the new grid
+  contains the old. At k = 10 and above the optimum already sat in the dense part
+  of the grid, so those figures should move by under one percentage point. At k = 5
+  and below they may rise materially, and single-quarter savings at k = 5 may no
+  longer be zero.
+- s11's optimism may rise, since a finer grid gives hindsight more to fit. If it
+  exceeds the 5-point threshold s11 prints, the prospective figures become the ones
+  to quote.
+- The B1 policy should save much less than M2's at every k. If it saves
+  comparably, the claim that the value comes from SMART telemetry is wrong, and the
+  README will say so.
+
+Wording findings, corrected without rerunning anything: E2 was not in the README's
+first paragraph as section 9 requires; the headline savings did not say their
+threshold is chosen in hindsight; "calibration did not degrade" judged spread and
+ignored that B2's level worsened; section 3 attributed the wrong bias to immortal
+time; the competing-risks justification did not say that "removed" is inferred
+rather than observed; event counts were not reconciled; the s10 and s11 figures
+carried two misleading labels.
+
 ---
 
 ## 13a. Status of the expectations after the window extension
@@ -748,12 +903,11 @@ criteria are the same, and the code that evaluates them is the same. Only the
 training windows grew, from six to eight quarters to eighteen to twenty.
 
 **The second run is a re-test, not a fresh pre-commitment, and is reported as
-one.** The 8-quarter verdicts were already known when the window was extended:
+one.** The 9-quarter verdicts were already known when the window was extended:
 E1 held, E2 failed, E3 held on its primary criterion with its directional half
-wrong, E4 held, E5 held once specified correctly. (These are the 9-quarter
-verdicts.) Re-running the same
-expectations with that knowledge is not the same epistemic act as declaring them
-blind, however unchanged the criteria.
+wrong, E4 held, E5 held once specified correctly. Re-running the same expectations
+with that knowledge is not the same epistemic act as declaring them blind, however
+unchanged the criteria.
 
 Three commitments follow, made here rather than after the fact:
 
@@ -781,64 +935,82 @@ concerns was fitted. This section records what happened, including the failures.
 It is the reason the document exists: a design that can be quietly edited after
 seeing results proves nothing.
 
+The project was run twice: on nine quarters (2024 Q1 to 2026 Q1) and, after the
+window was extended, on twenty-one (2021 Q1 to 2026 Q1), with the same test
+quarters, expectations, criteria and evaluation code. The second run is a re-test,
+not a fresh pre-commitment (section 13a), and both are reported. Nine-quarter
+figures are as recorded at the time and are not recomputed.
+
 ### Expectations
 
-| | expectation | verdict |
-|---|---|---|
-| **E1** | B1 beats B0 modestly | **held.** IPCW AUC +0.0667 [+0.0580, +0.0775], Brier -5.63e-07 [-6.47e-07, -4.98e-07]. Both paired intervals exclude zero. |
-| **E2** | B2 beats B1 | **failed.** AUC passed convincingly at +0.1873 [+0.1760, +0.1994], but Brier did not improve (+6.1e-06, interval spanning zero) and calibration degraded, decile spread 0.312 to 0.460. Two of three criteria missed. |
-| **E3** | B3 beats B2 on the Seagate cohort; 187 carries most of the gain, the other four contribute little | **held on the primary criterion, and the directional claim is half wrong.** AUC +0.0248 [+0.0183, +0.0337], Brier improved at both raw and oracle level. Attribute 187 carries 72.2% of the gain, so "187 dominates" holds. But the other four contribute +0.0069 [+0.0039, +0.0117], an interval comfortably excluding zero, so "contribute little" does not. |
-| **E4** | M2 beats B2 by a small margin and is no better calibrated | **held, with one part wrong in the favourable direction.** AUC +0.0287 [+0.0243, +0.0322], which is indeed small against the +0.187 SMART bought over B1. Brier improved at raw and oracle level. Calibration came out marginally *better*, 0.486 to 0.461, where the expectation said no better. |
-| **E5** | the delayed-entry estimate agrees with an untruncated cohort | **held once the comparison was specified correctly.** As originally written it failed at age 2 by 0.23 percentage points. That specification was not like for like: the two arms contain different installation vintages at the same age by construction. Matched on drive model and installation vintage, the delayed-entry estimate gives 0.98583 against the incident cohort's 0.98622, a gap of 0.04 pp. Vintage spread alone (0.240 pp) exceeds the original discrepancy. |
-| **E6** | proportional hazards is rejected by Schoenfeld residuals for the age term | **not tested, and no longer testable.** E6 assumed a Cox model. The frame changed before B2 to a piecewise-exponential hazard with the B1 estimate as offset, which carries no proportional hazards assumption to reject. Recorded as superseded rather than quietly dropped. |
+| | expectation | 9 quarters | 21 quarters |
+|---|---|---|---|
+| **E1** | B1 beats B0 modestly | **held.** AUC +0.0667 [+0.0580, +0.0775], Brier -5.63e-07 [-6.47e-07, -4.98e-07]. | **held.** AUC +0.0503 [+0.0402, +0.0626], Brier -2.89e-07 [-3.59e-07, -2.31e-07], whole fleet as specified. On the Cohort A rows used for the ladder, +0.039 [+0.029, +0.048]. |
+| **E2** | B2 beats B1 | **failed.** AUC +0.1873 [+0.1760, +0.1994]; Brier +6.1e-06, interval spanning zero; calibration recorded as degraded, 0.312 to 0.460, but B1's figure came from different rows (section 13), so that leg is not reliable. | **failed.** AUC +0.2007 [+0.1896, +0.2101]; Brier +1.86e-05 [+7.09e-06, +3.08e-05], reliably worse; calibration on identical rows not degraded, 0.494 to 0.375. At oracle level the Brier difference is -7.8e-06 [-1.59e-05, +1.25e-07], so the loss is level error. |
+| **E3** | B3 beats B2 on the Seagate cohort; 187 carries most of the gain, the other four contribute little | **held on the primary criterion, directional claim half wrong.** AUC +0.0248 [+0.0183, +0.0337]; Brier improved raw and at oracle level. 187 carries 72.2%; the other four add +0.0069 [+0.0039, +0.0117]. | **held on the primary criterion, directional claim half wrong.** AUC +0.0203 [+0.0144, +0.0280]; Brier not distinguishable from zero raw or at oracle level. 187 carries 87.8%; the other four add +0.0025 [+0.00005, +0.0053]. |
+| **E4** | M2 beats B2 by a small margin and is no better calibrated | **held, one part wrong in the favourable direction.** AUC +0.0287 [+0.0243, +0.0322]; Brier improved raw and at oracle level; calibration came out better, 0.486 to 0.461. | **held as written.** AUC +0.0247 [+0.0215, +0.0283]; Brier -3.87e-05 [-4.84e-05, -2.66e-05] raw and -2.67e-05 [-3.41e-05, -1.89e-05] at oracle level; calibration no better, 0.375 to 0.387. |
+| **E5** | the delayed-entry estimate agrees with an untruncated cohort, like for like | **held once compared like for like.** The pooled comparison failed at age 2 by 0.23 pp; matched on model and vintage, 0.98583 against 0.98622. | **failed.** Within installation year, under a rule fixed beforehand, 6 of 20 comparisons fall outside the incident band: all four ages for 2020 (delayed entry 0.21 to 0.43 pp higher) and 1.5 and 2 years for 2022 (0.18 and 0.55 pp lower). The 2020 test is not like for like at monthly resolution, a design flaw found after the result; the 2022 gap is unexplained (section 12, limitation 10). |
+| **E6** | proportional hazards is rejected by Schoenfeld residuals for the age term | **not tested, no longer testable.** E6 assumed a Cox model; B2 was implemented as a piecewise-exponential hazard with the B1 offset, which carries no proportional hazards assumption to reject. | superseded, as on nine quarters. |
 
-Three of five testable expectations held as written, one failed, one held on its
-primary criterion with its directional claim half wrong.
+**Tally.** On nine quarters, three of five testable expectations held, one failed,
+and one held on its primary criterion with its directional claim half wrong. On
+twenty-one quarters, two held, two failed, and one held on its primary criterion
+with its directional claim half wrong. The flips are E5, from held to failed, and
+the calibration part of E4, from wrong to right.
 
 ### Research questions
 
-**RQ1, dynamic risk.** Yes for ranking, qualified for probabilities. The best
-model (M2) reaches IPCW AUC 0.874 pooled across three held-out quarters, 0.880,
-0.867 and 0.875 individually, from 0.606 for age alone. But every model
-over-predicts: mean predicted risk 0.00114 against 0.00092 observed for M2, and
-the calibration curves sit parallel to and below the diagonal. That is level
-error rather than shape error, which is why section 10 sweeps the level instead
-of correcting it.
+**RQ1, dynamic risk.** Yes for ranking, qualified for probabilities. On twenty-one
+quarters M2 reaches IPCW AUC 0.874 pooled over the three held-out quarters (0.877,
+0.872 and 0.874 individually), against 0.610 for age alone on the same rows (0.874
+and 0.606 on nine quarters, the latter on different rows). Every SMART model
+over-predicts: mean predicted risk 0.00138 for M2 and 0.00134 for B2 against about
+0.00092 observed (0.00114 against 0.00092 for M2 on nine quarters). The level error
+is larger on the longer window, whose training years ran at a higher failure rate
+than the test quarters. That is why section 10 sweeps the level instead of
+correcting it.
 
-**RQ2, the vendor gap.** Small but real. The universal-attribute model already
-reaches AUC 0.856 on Seagate drives; all five Seagate-only attributes lift it to
-0.881. So a mixed-vendor fleet restricted to universally reported telemetry gives
-up roughly 2.5 AUC points, of which 72% would be recovered by attribute 187
-alone. Two further findings emerged in answering it: attribute 190 duplicates the
-universal attribute 194 exactly on Seagate firmware and contributes nothing, and
-197 and 198 are likewise identical within Seagate while differing across the full
-fleet.
+**RQ2, the vendor gap.** Small but real. On the Seagate cohort the universal model
+reaches AUC 0.855 and all five Seagate-only attributes lift it to 0.875 (0.856 to
+0.881 on nine quarters). A mixed-vendor fleet restricted to universal telemetry
+gives up about two AUC points, of which attribute 187 alone would recover 88% (72%
+on nine quarters). Attributes 197 and 198 are identical within Seagate, and 190 is
+collinear with 194 to four decimal places; the nine-quarter text called 190 an exact
+duplicate, which on twenty-one quarters it is not quite, since it survives the
+exact-duplicate check.
 
-**RQ3, the decision.** Break-even sits just below a cost ratio of k = 2. Above
-it, risk-based replacement lowers the fleet cost rate: -9.3% at k = 5, -24.7% at
-k = 10, -50.6% at k = 50. The recommendation is stable under the fleet hazard
-level coming in 20% either way, which is the quantity the rejected recalibration
-tried and failed to estimate. Age-based replacement never pays at any cost ratio
-tested, which is what justifies the modelling: drive age is free and a policy
-built on it is worse than doing nothing.
+**RQ3, the decision.** Over the three held-out quarters, risk-based replacement
+lowers the fleet cost rate by 8.3% at k = 5, 25.1% at k = 10, 37.0% at k = 20 and
+50.5% at k = 50 (9.3%, 24.7% and 50.6% at 5, 10 and 50 on nine quarters), with
+break-even near k = 2. The result is stable under the fleet hazard level coming in
+20% either way. A threshold chosen on 2025 Q3 and applied to the next two quarters
+costs at most 0.46 percentage points against hindsight. The size of the saving
+depends on the simulated period (section 12, limitation 12): at k = 10 it is 5 to
+18% over any single quarter and 25% over three, and at k = 5 it appears only over
+the full three quarters. Age-based replacement never pays at any cost ratio tested,
+on either window.
 
 ### Measured quantities
 
-| quantity | value |
-|---|---|
-| drives / spells / landmark rows | 384,213 / 391,275 / 8.5 million |
-| failure events | 9,790, reconciling exactly with the source flags |
-| fleet annualised failure rate, held-out window | 1.107% |
-| peak hazard | 3.14% annualised, at 6.2 years of power-on time |
-| AUC, B0 / B1 / B2 / M2 | 0.606 / 0.672 / 0.847 / 0.874 |
-| events in the three held-out quarters | 1,020 / 781 / 880 |
+| quantity | 9 quarters | 21 quarters |
+|---|---|---|
+| drives / spells | 384,213 / 391,275 | 429,870 / 441,894 |
+| landmark rows | 8.5 million | 17.0 million |
+| failure events, reconciling with source flags | 9,790 | 18,738 |
+| left-truncated drives | 84.9% | 52.1% |
+| events in no landmark window | 7.4% | 3.3% |
+| fleet annualised failure rate, held-out window | 1.107% | 1.104% |
+| peak hazard | 3.14% at 6.2 years | 2.67% at 6.75 years |
+| AUC, B0 / B1 / B2 / M2 | 0.606 / 0.672 / 0.847 / 0.874, mixed rows | 0.610 / 0.649 / 0.849 / 0.874, identical rows |
+| covered events in the three held-out quarters | 1,020 / 781 / 880 | 1,014 / 777 / 876 |
 
 ### Phase 1 status
 
 Complete: ingest pipeline, survival tables, informative-censoring test,
-delayed-entry validation, B0 through B3, M2, evaluation suite, decision layer and
-fleet simulation. Remaining: this README.
+delayed-entry validation, B0 through B3, M2, evaluation suite, decision layer, fleet
+simulation, prospective and window checks on the policy, and the README.
 
 Removed from Phase 1 during the work, each with a logged reason: Fine-Gray (no
 observed cause-of-exit label in the data) and M1 (could not be fitted on the same
-rows as the rest of the ladder).
+rows as the rest of the ladder). Planned and not done, logged in section 13: the
+Toshiba sensitivity fit, Uno's concordance, and calibration slope and intercept.

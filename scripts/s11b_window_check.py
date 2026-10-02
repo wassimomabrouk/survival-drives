@@ -38,7 +38,7 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from s9_decision_layer import K_GRID, cost_rate, simulate  # noqa: E402
+from s9_decision_layer import K_GRID, cost_rate, simulate, threshold_grid  # noqa: E402
 from s11_prospective_policy import spell_bounds  # noqa: E402
 
 
@@ -65,7 +65,7 @@ def main() -> int:
 
     # The same threshold grid as s9, built on all held-out rows.
     risk_all = df[args.risk_col].to_numpy(float)
-    tau_grid = np.unique(np.quantile(risk_all, np.linspace(0.90, 0.99999, 40)))
+    tau_grid = threshold_grid(risk_all)
 
     q1, q2, q3 = quarters
     windows = {

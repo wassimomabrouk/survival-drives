@@ -33,6 +33,7 @@ import sys
 from pathlib import Path
 
 import matplotlib
+import numpy as np
 import pandas as pd
 
 matplotlib.use("Agg")
@@ -132,7 +133,7 @@ def figure_calibration(df: pd.DataFrame, reports: Path, figures: Path) -> None:
     s = df["status"].to_numpy(int)
 
     fig, ax = plt.subplots(figsize=(6.8, 6.4))
-    lim = 0.0
+    lim, floor = 0.0, np.inf
     tables_out, spreads = [], []
     for label, col, colour, style in (("B1, drive model and age", "risk_b1", GREY, "-"),
                                       ("B2, + SMART", "risk_b2", "#5B8FA8", "-"),
@@ -141,6 +142,7 @@ def figure_calibration(df: pd.DataFrame, reports: Path, figures: Path) -> None:
         ax.plot(c["mean_predicted"], c["observed_ipcw"], style, marker="o", ms=5,
                 lw=1.7, color=colour, label=label)
         lim = max(lim, c["mean_predicted"].max(), c["observed_ipcw"].max())
+        floor = min(floor, c["mean_predicted"].min(), c["observed_ipcw"].min())
         spread = c["ratio_obs_pred"].max() - c["ratio_obs_pred"].min()
         print(f"  {label}: decile spread {spread:.3f}")
         tables_out.append(c.assign(model=label))
@@ -156,7 +158,9 @@ def figure_calibration(df: pd.DataFrame, reports: Path, figures: Path) -> None:
     # into the bottom-left corner while the axis is set by the top decile of
     # whichever model predicts highest.
     lim *= 1.3
-    lo = 2e-4
+    # From the data rather than fixed, so no model's lowest decile falls off the
+    # axis (a fixed 2e-4 clipped B2 and M2 on the 21-quarter run).
+    lo = floor * 0.8
     ax.plot([lo, lim], [lo, lim], color="#999999", lw=1.1, ls="--",
             label="perfect calibration")
     ax.set_xscale("log")
@@ -205,7 +209,7 @@ def figure_rq2(reports: Path, figures: Path) -> None:
     share = 100 * vals[1] / vals[0] if vals[0] else float("nan")
     ax.text(0.5, 0.93,
             f"attribute 187 carries {share:.0f}% of the gain, but the other four are not "
-            f"negligible\nas expectation E3 predicted; both intervals exclude zero",
+            f"negligible,\ncontrary to expectation E3; both intervals exclude zero",
             transform=ax.transAxes, fontsize=9, color="#555555", ha="center")
     fig.tight_layout()
     fig.savefig(figures / "summary_rq2_decomposition.png", dpi=150)
